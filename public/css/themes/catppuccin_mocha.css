@@ -75,7 +75,7 @@ body {
   margin: 0; */
 
   /* Fix Poll Leader color */
-	/* Text is illegible when using light accents otherwise */
+  /* Text is illegible when using light accents otherwise */
   .poll-meter.leader {
     color: var(--bg_color);
   }
