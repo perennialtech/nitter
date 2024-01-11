@@ -86,7 +86,7 @@ genPrefs:
       "Enable HLS video streaming (requires JavaScript)"
 
     proxyVideos(checkbox, true):
-      "Proxy video streaming through the server (might be slow)"
+      "Proxy video streaming through the server (might be slow). If Firefox ETP (Enhanced Tracking Protection) is used, this setting needs to be enabled in order for video playback to work"
 
     muteVideos(checkbox, false):
       "Mute videos by default"
