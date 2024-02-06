@@ -4,6 +4,7 @@ services:
 
   nitter:
     image: perennial131/nitter:latest
+    # image: perennial131/nitter:testing
     container_name: nitter
     ports:
       - "127.0.0.1:8080:8080" # Replace with "8080:8080" if you don't use a reverse proxy
