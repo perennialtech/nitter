@@ -28,7 +28,7 @@ proc renderNavbar(cfg: Config; req: Request; rss, canonical: string): VNode =
       a(href="/"): img(class="site-logo", src="/logo.png", alt="Logo")
 
       tdiv(class="nav-item right"):
-        a(class="instance-notice", href="https://perennial.statuspage.io"): text "NOTICE"
+        a(class="instance-notice", href="https://perennialte.ch/blog/2023/02/14/public-nitter-instance-shutdown/"): text "NOTICE"
         icon "search", title="Search", href="/search"
         if cfg.enableRss and rss.len > 0:
           icon "rss-feed", title="RSS Feed", href=rss
