@@ -1,3 +1,9 @@
+> [!NOTE]
+> This repository is a fork of [Nitter](https://github.com/zedeus/nitter) that includes several changes not merged upstream. For example:
+> - Support for Catppuccin themes
+> - Fixed video playback ([PR #1148](https://github.com/zedeus/nitter/pull/1148))
+> - Updated `auth.nim` to disable expiring account tokens ([PR #1164](https://github.com/zedeus/nitter/pull/1164))
+
 # Nitter
 
 [![Test Matrix](https://github.com/zedeus/nitter/workflows/Tests/badge.svg)](https://github.com/zedeus/nitter/actions/workflows/run-tests.yml)
