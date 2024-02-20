@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    runs-on: buildjet-2vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         nim:
@@ -19,18 +19,19 @@ jobs:
           - "2.0.x"
           - "devel"
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Cache nimble
         id: cache-nimble
-        uses: buildjet/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.nimble
           key: ${{ matrix.nim }}-nimble-${{ hashFiles('*.nimble') }}
           restore-keys: |
             ${{ matrix.nim }}-nimble-
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
           cache: "pip"
@@ -41,7 +42,7 @@ jobs:
       - run: nimble build -d:release -Y
       - run: pip install seleniumbase
       - run: seleniumbase install chromedriver
-      - uses: supercharge/redis-github-action@1.5.0
+      - uses: supercharge/redis-github-action@1.8.0
       - name: Prepare Nitter
         run: |
           sudo apt install libsass-dev -y
