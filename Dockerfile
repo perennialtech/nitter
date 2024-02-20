@@ -19,10 +19,6 @@ RUN apk --no-cache add pcre ca-certificates
 COPY --from=nim /src/nitter/nitter ./
 COPY --from=nim /src/nitter/nitter.example.conf ./nitter.conf
 COPY --from=nim /src/nitter/public ./public
-# -- Dodgy workaround for max file size in K8s
-# Here, guest_accounts.jsonl is included with the Nitter image
-# which is pushed to a private registry that we pull from
-COPY --from=nim /src/nitter/guest_accounts.jsonl ./
 EXPOSE 8080
 RUN adduser -h /src/ -D -s /bin/sh nitter
 USER nitter
