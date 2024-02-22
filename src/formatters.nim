@@ -83,7 +83,7 @@ proc proxifyVideo*(manifest: string; proxy: bool): string =
     let url =
       if line.startsWith("#EXT-X-MAP:URI"): line[16 .. ^2]
       elif line.startsWith("#EXT-X-MEDIA") and "URI=" in line:
-        line[line.find("URI=") + 5 .. ^2]
+        line[line.find("URI=") + 5 .. -1 + line.find("\"", start= 5 + line.find("URI="))]
       else: line
     if url.startsWith('/'):
       let path = "https://video.twimg.com" & url
