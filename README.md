@@ -3,6 +3,7 @@
 > - Support for Catppuccin themes
 > - Fixed video playback ([PR #1148](https://github.com/zedeus/nitter/pull/1148))
 > - Updated `auth.nim` to disable expiring account tokens ([PR #1164](https://github.com/zedeus/nitter/pull/1164))
+> - Automated OCI image builds pushed to [ghcr.io](https://github.com/features/packages)
 
 # Nitter
 
