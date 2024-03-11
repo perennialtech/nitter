@@ -44,7 +44,7 @@ proc renderPreferences*(prefs: Prefs; path: string; themes: seq[string]): VNode 
           text "Preferences are stored client-side using cookies without any personal information."
           br()
           br()
-          text "Note that if Firefox ETP (Enhanced Tracking Protection) is used, proxy video streaming must be enabled in order for video playback to work."
+          text "If you're using Firefox with Enhanced Tracking Protection (ETP) enabled, ensure that proxy video streaming is turned on to allow video playback functionality."
 
         button(`type`="submit", class="pref-submit"):
           text "Save preferences"
