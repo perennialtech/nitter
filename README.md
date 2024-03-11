@@ -2,7 +2,7 @@
 > This repository is a fork of [Nitter](https://github.com/zedeus/nitter) that includes several changes not merged upstream. For example:
 > - Support for Catppuccin themes ([commit 1f3a191](https://github.com/perennialtech/nitter/commit/1f3a191))
 > - Automated OCI image builds pushed to [ghcr.io](https://github.com/features/packages) ([commit d5ad7fe](https://github.com/perennialtech/nitter/commit/d5ad7fe))
-> - Updated [`hls.js`](https://github.com/video-dev/hls.js) version to v1.5.7 ([commit 1e0d9b3](https://github.com/perennialtech/nitter/commit/1e0d9b349dc75c3514fa2341def2089a3bf3e54f))
+> - Updated [`hls.js`](https://github.com/video-dev/hls.js) to version v1.5.7 ([commit 1e0d9b3](https://github.com/perennialtech/nitter/commit/1e0d9b349dc75c3514fa2341def2089a3bf3e54f))
 > - ~~Fixed video playback ([PR #1148](https://github.com/zedeus/nitter/pull/1148))~~ (merged upstream)
 > - ~~Updated `auth.nim` to disable expiring account tokens ([PR #1164](https://github.com/zedeus/nitter/pull/1164))~~ (merged upstream)
 
