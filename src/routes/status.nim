@@ -21,7 +21,7 @@ proc createStatusRouter*(cfg: Config) =
       if id.len > 19 or id.any(c => not c.isDigit):
         resp Http404, showError("Invalid tweet ID", cfg)
 
-      let prefs = cookiePrefs()
+      let prefs = requestPrefs()
 
       # used for the infinite scroll feature
       if @"scroll".len > 0:
@@ -31,8 +31,6 @@ proc createStatusRouter*(cfg: Config) =
         resp $renderReplies(replies, prefs, getPath())
 
       let conv = await getTweet(id, getCursor())
-      if conv == nil:
-        echo "nil conv"
 
       if conv == nil or conv.tweet == nil or conv.tweet.id == 0:
         var error = "Tweet not found"
@@ -46,7 +44,7 @@ proc createStatusRouter*(cfg: Config) =
         desc = conv.tweet.text
 
       var
-        images = conv.tweet.photos
+        images = conv.tweet.photos.mapIt(it.url)
         video = ""
 
       if conv.tweet.video.isSome():
@@ -68,7 +66,7 @@ proc createStatusRouter*(cfg: Config) =
 
     get "/@name/@s/@id/@m/?@i?":
       cond @"s" in ["status", "statuses"]
-      cond @"m" in ["video", "photo"]
+      cond @"m" in ["video", "photo", "history"]
       redirect("/$1/status/$2" % [@"name", @"id"])
 
     get "/@name/statuses/@id/?":
@@ -76,6 +74,6 @@ proc createStatusRouter*(cfg: Config) =
 
     get "/i/web/status/@id":
       redirect("/i/status/" & @"id")
-      
+
     get "/@name/thread/@id/?":
       redirect("/$1/status/$2" % [@"name", @"id"])

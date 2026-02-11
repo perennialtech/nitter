@@ -6,7 +6,7 @@ from os import getEnv
 
 import jester
 
-import types, config, prefs, formatters, redis_cache, http_pool, auth
+import types, config, prefs, formatters, redis_cache, http_pool, auth, apiutils
 import views/[general, about]
 import routes/[
   preferences, timeline, status, media, search, rss, list, debug,
@@ -37,6 +37,9 @@ setHmacKey(cfg.hmacKey)
 setProxyEncoding(cfg.base64Media)
 setMaxHttpConns(cfg.httpMaxConns)
 setHttpProxy(cfg.proxy, cfg.proxyAuth)
+setApiProxy(cfg.apiProxy)
+setDisableTid(cfg.disableTid)
+setMaxConcurrentReqs(cfg.maxConcurrentReqs)
 initAboutPage(cfg.staticDir)
 
 waitFor initRedisPool(cfg)
@@ -62,11 +65,16 @@ settings:
   reusePort = true
 
 routes:
+  before:
+    # skip all file URLs
+    cond "." notin request.path
+    applyUrlPrefs()
+
   get "/":
-    resp renderMain(renderSearch(), request, cfg, themePrefs())
+    resp renderMain(renderSearch(), request, cfg, requestPrefs())
 
   get "/about":
-    resp renderMain(renderAbout(), request, cfg, themePrefs())
+    resp renderMain(renderAbout(), request, cfg, requestPrefs())
 
   get "/explore":
     redirect("/about")
@@ -77,7 +85,7 @@ routes:
   get "/i/redirect":
     let url = decodeUrl(@"url")
     if url.len == 0: resp Http404
-    redirect(replaceUrls(url, cookiePrefs()))
+    redirect(replaceUrls(url, requestPrefs()))
 
   error Http404:
     resp Http404, showError("Page not found", cfg)

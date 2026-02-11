@@ -19,7 +19,7 @@ proc createSearchRouter*(cfg: Config) =
         resp Http400, showError("Search input too long.", cfg)
 
       let
-        prefs = cookiePrefs()
+        prefs = requestPrefs()
         query = initQuery(params(request))
         title = "Search" & (if q.len > 0: " (" & q & ")" else: "")
 
@@ -43,9 +43,9 @@ proc createSearchRouter*(cfg: Config) =
         resp Http404, showError("Invalid search", cfg)
 
     get "/hashtag/@hash":
-      redirect("/search?q=" & encodeUrl("#" & @"hash"))
+      redirect("/search?f=tweets&q=" & encodeUrl("#" & @"hash"))
 
     get "/opensearch":
-      let url = getUrlPrefix(cfg) & "/search?q="
+      let url = getUrlPrefix(cfg) & "/search?f=tweets&q="
       resp Http200, {"Content-Type": "application/opensearchdescription+xml"},
                      generateOpenSearchXML(cfg.title, cfg.hostname, url)

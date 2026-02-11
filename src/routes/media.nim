@@ -52,10 +52,10 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
         ""
 
     let headers = newHttpHeaders({
-      "Content-Type": res.headers["content-type", 0],
-      "Content-Length": contentLength,
-      "Cache-Control": maxAge,
-      "ETag": hashed
+      "content-type": res.headers["content-type", 0],
+      "content-length": contentLength,
+      "cache-control": maxAge,
+      "etag": hashed
     })
 
     respond(request, headers)
@@ -93,6 +93,8 @@ proc createMediaRouter*(cfg: Config) =
 
     get re"^\/pic\/orig\/(enc)?\/?(.+)":
       var url = decoded(request, 1)
+      cond "amplify_video" notin url
+
       if "twimg.com" notin url:
         url.insert(twimg)
       if not url.startsWith(https):
@@ -107,6 +109,8 @@ proc createMediaRouter*(cfg: Config) =
 
     get re"^\/pic\/(enc)?\/?(.+)":
       var url = decoded(request, 1)
+      cond "amplify_video" notin url
+
       if "twimg.com" notin url:
         url.insert(twimg)
       if not url.startsWith(https):
@@ -139,6 +143,6 @@ proc createMediaRouter*(cfg: Config) =
 
       if ".m3u8" in url:
         let vid = await safeFetch(url)
-        content = proxifyVideo(vid, cookiePref(proxyVideos))
+        content = proxifyVideo(vid, requestPrefs().proxyVideos)
 
       resp content, m3u8Mime

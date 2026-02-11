@@ -26,7 +26,9 @@ proc icon*(icon: string; text=""; title=""; class=""; href=""): VNode =
 template verifiedIcon*(user: User): untyped {.dirty.} =
   if user.verifiedType != VerifiedType.none:
     let lower = ($user.verifiedType).toLowerAscii()
-    icon "ok", class=(&"verified-icon {lower}"), title=(&"Verified {lower} account")
+    buildHtml(tdiv(class=(&"verified-icon {lower}"))):
+      icon "circle", class="verified-icon-circle", title=(&"Verified {lower} account")
+      icon "ok", class="verified-icon-check", title=(&"Verified {lower} account")
   else:
     text ""
 
@@ -40,7 +42,6 @@ proc linkUser*(user: User, class=""): VNode =
   buildHtml(a(href=href, class=class, title=nameText)):
     text nameText
     if isName:
-      verifiedIcon(user)
       if user.protected:
         text " "
         icon "lock", title="Protected account"
@@ -64,20 +65,20 @@ proc buttonReferer*(action, text, path: string; class=""; `method`="post"): VNod
       text text
 
 proc genCheckbox*(pref, label: string; state: bool): VNode =
-  buildHtml(label(class="pref-group checkbox-container")):
+  buildHtml(label(class="pref-group checkbox-container", title=pref)):
     text label
     input(name=pref, `type`="checkbox", checked=state)
     span(class="checkbox")
 
 proc genInput*(pref, label, state, placeholder: string; class=""; autofocus=true): VNode =
   let p = placeholder
-  buildHtml(tdiv(class=("pref-group pref-input " & class))):
+  buildHtml(tdiv(class=("pref-group pref-input " & class), title=pref)):
     if label.len > 0:
       label(`for`=pref): text label
     input(name=pref, `type`="text", placeholder=p, value=state, autofocus=(autofocus and state.len == 0))
 
 proc genSelect*(pref, label, state: string; options: seq[string]): VNode =
-  buildHtml(tdiv(class="pref-group pref-input")):
+  buildHtml(tdiv(class="pref-group pref-input", title=pref)):
     label(`for`=pref): text label
     select(name=pref):
       for opt in options:
@@ -89,9 +90,16 @@ proc genDate*(pref, state: string): VNode =
     input(name=pref, `type`="date", value=state)
     icon "calendar"
 
-proc genImg*(url: string; class=""): VNode =
+proc genNumberInput*(pref, label, state, placeholder: string; class=""; autofocus=true; min="0"): VNode =
+  let p = placeholder
+  buildHtml(tdiv(class=("pref-group pref-input " & class))):
+    if label.len > 0:
+      label(`for`=pref): text label
+    input(name=pref, `type`="number", placeholder=p, value=state, autofocus=(autofocus and state.len == 0), min=min, step="1")
+
+proc genImg*(url: string; class=""; alt=""): VNode =
   buildHtml():
-    img(src=getPicUrl(url), class=class, alt="", loading="lazy")
+    img(src=getPicUrl(url), class=class, alt=alt, loading="lazy")
 
 proc getTabClass*(query: Query; tab: QueryKind): string =
   if query.kind == tab: "tab-item active"
