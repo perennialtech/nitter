@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        nim: ["2.0.x", "2.2.x", "devel"]
+        nim: ["2.2.12", "devel"]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -59,7 +59,7 @@ jobs:
         uses: jiro4989/setup-nim-action@v2
         with:
           nim-version: ${{ matrix.nim }}
-          use-nightlies: true
+          use-nightlies: ${{ matrix.nim == 'devel' }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Project
@@ -70,17 +70,20 @@ jobs:
           nimble scss
           nimble md
 
-      - name: Run security regression tests
-        run: nim r tests/test_ssrf_1411.nim
+      - name: Run Nim regression tests
+        run: |
+          nim r tests/test_ssrf_1411.nim
+          nim r tests/test_formatters.nim
+          nim r tests/test_timeline.nim
 
       - name: Test HTTP and HTTPS CONNECT proxies
         run: python3 tests/test_http_proxy.py -v
 
-      - name: Upload 2.2.x build artifact
-        if: matrix.nim == '2.2.x'
+      - name: Upload 2.2.12 build artifact
+        if: matrix.nim == '2.2.12'
         uses: actions/upload-artifact@v6
         with:
-          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          name: nitter-linux-nim-2.2.12-${{ github.sha }}
           path: |
             ./nitter
             ./public
@@ -105,7 +108,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          name: nitter-linux-nim-2.2.12-${{ github.sha }}
           path: .
 
       - name: Test local pages and Catppuccin themes
@@ -136,7 +139,7 @@ jobs:
     steps:
       - name: Install runtime deps
         run: |
-          sudo apt-get install -y --no-install-recommends libsass-dev libpcre3
+          sudo apt-get install -y --no-install-recommends libpcre3
 
       - name: Checkout code
         uses: actions/checkout@v6
@@ -166,30 +169,10 @@ jobs:
         working-directory: tests
         run: poetry sync
 
-      - name: Cache Nimble Dependencies
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.nimble/pkgcache
-            ~/.nimble/packages_official.json
-          key: 2.2.x-nimble-v6-${{ hashFiles('*.nimble') }}
-          restore-keys: |
-            2.2.x-nimble-v6-
-
-      - name: Setup Nim
-        uses: jiro4989/setup-nim-action@v2
-        with:
-          nim-version: 2.2.x
-          use-nightlies: true
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Nimble dependencies
-        run: nimble install -y --depsOnly
-
-      - name: Download 2.2.x build artifact
+      - name: Download 2.2.12 build artifact
         uses: actions/download-artifact@v4
         with:
-          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          name: nitter-linux-nim-2.2.12-${{ github.sha }}
           path: .
 
       - name: Make nitter binary executable
@@ -203,9 +186,6 @@ jobs:
           sed -i 's/enableDebug = false/enableDebug = true/g' nitter.conf
           sed -i 's/maxRetries = 1/maxRetries = 3/g' nitter.conf
           sed -i 's/hostname = "nitter.net"/hostname = "localhost:8080"/g' nitter.conf
-
-          nim r tools/rendermd.nim
-          nim r tools/gencss.nim
 
           printf '%s\n' "$SESSIONS" > ./sessions.jsonl
 

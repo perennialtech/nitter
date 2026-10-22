@@ -10,7 +10,7 @@ bin           = @["nitter"]
 
 # Dependencies
 
-requires "nim >= 2.0.0"
+requires "nim >= 2.2.12"
 requires "jester == 0.6.0"
 requires "karax == 1.5.0"
 requires "sass == 0.2.0"
@@ -23,6 +23,7 @@ requires "zippy == 0.10.19"
 requires "flatty == 0.4.0"
 requires "jsony == 1.1.6"
 requires "oauth == 0.11"
+requires "htmlparser == 0.1.0"
 
 # Tasks
 

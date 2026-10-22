@@ -4,7 +4,7 @@ import ../src/[http_pool, types]
 
 proc main() {.async.} =
   setMaxHttpConns(1)
-  setHttpProxy(paramStr(1), "")
+  setHttpProxy(paramStr(1), if paramCount() >= 4: paramStr(4) else: "")
   let pool = HttpPool()
   if paramStr(2).startsWith("https:"):
     # Trust only the test CA without changing production's default trust store.
