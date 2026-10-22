@@ -1,7 +1,8 @@
 @import "_variables";
 @import "_mixins";
 
-.conversation {
+.conversation,
+.edit-history {
   @include panel(100%, 600px);
 
   .show-more {
@@ -9,17 +10,67 @@
   }
 }
 
-.main-thread {
+.main-thread,
+.latest-edit {
   margin-bottom: 20px;
+}
+
+.reply {
+  margin-bottom: 10px;
+}
+
+.reply-sort {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
   background-color: var(--bg_panel);
+  font-size: 14px;
+}
+
+.reply-sort-label {
+  color: var(--fg_faded);
+  margin-right: 2px;
+}
+
+.reply-sort-option {
+  color: var(--tab);
+  font-weight: bold;
+  text-decoration: none;
+  border-bottom: 0.1rem solid transparent;
+
+  &:hover {
+    color: var(--fg_color);
+    text-decoration: none;
+  }
+
+  &.active {
+    color: var(--tab_selected);
+    border-bottom-color: var(--tab_selected);
+  }
 }
 
 .main-tweet,
-.replies {
+.replies,
+.edit-history > div {
   body.fixed-nav & {
     padding-top: 50px;
     margin-top: -50px;
   }
+}
+
+.edit-history-header {
+  padding: 10px;
+  margin-bottom: 5px;
+  font-size: 16px;
+  font-weight: bold;
+  background-color: var(--bg_panel);
+}
+
+.tweet-edit {
+  margin-bottom: 5px;
 }
 
 .main-tweet .tweet-content {
@@ -30,11 +81,6 @@
   .main-tweet .tweet-content {
     font-size: 16px;
   }
-}
-
-.reply {
-  background-color: var(--bg_panel);
-  margin-bottom: 10px;
 }
 
 .thread-line {
@@ -138,4 +184,13 @@
       display: inline;
     }
   }
+}
+
+.related-header {
+  padding: 8px 12px;
+  margin-top: 10px;
+  background-color: var(--bg_panel);
+  color: var(--fg_faded);
+  font-size: 14px;
+  border-bottom: 1px solid var(--border_grey);
 }

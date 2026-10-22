@@ -1,45 +1,51 @@
 # Nitter
 
-[![Test Matrix](https://github.com/zedeus/nitter/workflows/Tests/badge.svg)](https://github.com/zedeus/nitter/actions/workflows/run-tests.yml)
-[![Test Matrix](https://github.com/zedeus/nitter/workflows/Docker/badge.svg)](https://github.com/zedeus/nitter/actions/workflows/build-docker.yml)
-[![License](https://img.shields.io/github/license/zedeus/nitter?style=flat)](#license)
-
 > [!NOTE]
-> Running a Nitter instance now requires real accounts, since Twitter removed the previous methods. \
-> This does not affect users. \
-> For instructions on how to obtain session tokens, see [Creating session tokens](https://github.com/zedeus/nitter/wiki/Creating-session-tokens).
+> On 24 August 2026, cease and desist letters were sent by X Corp. demanding a permanent takedown of Nitter instances and the project's repository. \
+> **UPDATE 10 October 2026:** I'm seeking funding and legal help. See [nitter.net](https://nitter.net) for more details.
 
 A free and open source alternative Twitter front-end focused on privacy and
 performance. \
 Inspired by the [Invidious](https://github.com/iv-org/invidious) project.
 
-- No JavaScript or ads
+[![Build and publish OCI images](https://github.com/perennialtech/nitter/actions/workflows/build-docker.yml/badge.svg)](https://github.com/perennialtech/nitter/actions/workflows/build-docker.yml)
+[![License](https://img.shields.io/github/license/zedeus/nitter?style=flat)](#license)
+
+## Features
+
+This fork includes the Catppuccin Latte, Frappé, Macchiato, and Mocha themes,
+available under **Preferences → Theme**. Prebuilt images are published to
+[GitHub Container Registry](https://github.com/perennialtech/nitter/pkgs/container/nitter).
+
+- No JavaScript required
+- Zero ads
 - All requests go through the backend, client never talks to Twitter
 - Prevents Twitter from tracking your IP or JavaScript fingerprint
 - Uses Twitter's unofficial API (no developer account required)
 - Lightweight (for [@nim_lang](https://nitter.net/nim_lang), 60KB vs 784KB from twitter.com)
-- RSS feeds
+- RSS feeds (instance-specific, often disabled due to abuse)
 - Themes
 - Mobile support (responsive design)
 - AGPLv3 licensed, no proprietary instances permitted
 
-<details>
-<summary>Donations</summary>
-Liberapay: https://liberapay.com/zedeus<br>
-Patreon: https://patreon.com/nitter<br>
-BTC: bc1qpqpzjkcpgluhzf7x9yqe7jfe8gpfm5v08mdr55<br>
-ETH: 0x24a0DB59A923B588c7A5EBd0dBDFDD1bCe9c4460<br>
-XMR: 42hKayRoEAw4D6G6t8mQHPJHQcXqofjFuVfavqKeNMNUZfeJLJAcNU19i1bGdDvcdN6romiSscWGWJCczFLe9RFhM3d1zpL<br>
-SOL: ANsyGNXFo6osuFwr1YnUqif2RdoYRhc27WdyQNmmETSW<br>
-ZEC: u1vndfqtzyy6qkzhkapxelel7ams38wmfeccu3fdpy2wkuc4erxyjm8ncjhnyg747x6t0kf0faqhh2hxyplgaum08d2wnj4n7cyu9s6zhxkqw2aef4hgd4s6vh5hpqvfken98rg80kgtgn64ff70djy7s8f839z00hwhuzlcggvefhdlyszkvwy3c7yw623vw3rvar6q6evd3xcvveypt
-</details>
-
 ## Roadmap
 
-- Embeds
+- ~~Embeds~~ (see https://github.com/zedeus/nitter/wiki/Embeds-guide)
 - Account system with timeline support
-- Archiving tweets/profiles
-- Developer API
+
+## Donations
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/zedeus)
+[![Patreon](https://img.shields.io/badge/Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://patreon.com/nitter)
+[![Liberapay](https://img.shields.io/badge/Liberapay-F6C915?style=for-the-badge&logo=liberapay&logoColor=black)](https://liberapay.com/zedeus)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/zedeus)
+
+**BTC**: bc1qpqpzjkcpgluhzf7x9yqe7jfe8gpfm5v08mdr55<br>
+**ETH**: 0x24a0DB59A923B588c7A5EBd0dBDFDD1bCe9c4460<br>
+**XMR**: 42hKayRoEAw4D6G6t8mQHPJHQcXqofjFuVfavqKeNMNUZfeJLJAcNU19i1bGdDvcdN6romiSscWGWJCczFLe9RFhM3d1zpL<br>
+**SOL**: FF5bheiD5AqPEdc3eyjymJ8AoMRF1hS78Ht6FiSZZF1t<br>
+**$Nitter**: 4fSxCKc91ELQYVdv3tmHW8R15KoALPwEngyoQe1Xpump<br>
+**ZEC**: u1vndfqtzyy6qkzhkapxelel7ams38wmfeccu3fdpy2wkuc4erxyjm8ncjhnyg747x6t0kf0faqhh2hxyplgaum08d2wnj4n7cyu9s6zhxkqw2aef4hgd4s6vh5hpqvfken98rg80kgtgn64ff70djy7s8f839z00hwhuzlcggvefhdlyszkvwy3c7yw623vw3rvar6q6evd3xcvveypt
 
 ## Resources
 
@@ -102,11 +108,11 @@ along with the scss and md files.
 ```bash
 # useradd -m nitter
 # su nitter
-$ git clone https://github.com/zedeus/nitter
+$ git clone https://github.com/perennialtech/nitter
 $ cd nitter
-$ nimble build -d:danger --mm:refc
-$ nimble scss
-$ nimble md
+$ nimble -l build -d:danger --mm:refc
+$ nimble -l scss
+$ nimble -l md
 $ cp nitter.example.conf nitter.conf
 ```
 
@@ -121,38 +127,57 @@ performance reasons.
 
 ### Docker
 
-Page for the Docker image: https://hub.docker.com/r/zedeus/nitter
+Images are published to `ghcr.io/perennialtech/nitter` after successful CI on
+`master`. The `latest` and `master` tags, and full commit-SHA tags, support both
+`linux/amd64` and `linux/arm64`. Pull request builds do not publish images.
 
-#### NOTE: For ARM64 support, please use the separate ARM64 docker image: [`zedeus/nitter:latest-arm64`](https://hub.docker.com/r/zedeus/nitter/tags).
+Browsing Twitter requires real account sessions in `sessions.jsonl`. Follow the
+upstream [session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens)
+to create this file before starting the container.
 
 To run Nitter with Docker, you'll need to install and run Redis separately
 before you can run the container. See below for how to also run Redis using
 Docker.
 
+First create your config file. The Docker commands mount it into the container,
+so it has to exist on the host beforehand. If you've cloned the repo:
+
+```bash
+cp nitter.example.conf nitter.conf
+```
+
+If you're using the prebuilt image without a local clone, download
+[`nitter.example.conf`](https://raw.githubusercontent.com/zedeus/nitter/master/nitter.example.conf)
+and save it as `nitter.conf` instead.
+
 To build and run Nitter in Docker:
 
 ```bash
 docker build -t nitter:latest .
-docker run -v $(pwd)/nitter.conf:/src/nitter.conf -d --network host nitter:latest
+docker run -v "$(pwd)/nitter.conf:/src/nitter.conf:ro" \
+  -v "$(pwd)/sessions.jsonl:/src/sessions.jsonl:ro" -d --network host nitter:latest
 ```
-
-Note: For ARM64, use this Dockerfile: [`Dockerfile.arm64`](https://github.com/zedeus/nitter/blob/master/Dockerfile.arm64).
 
 A prebuilt Docker image is provided as well:
 
 ```bash
-docker run -v $(pwd)/nitter.conf:/src/nitter.conf -d --network host zedeus/nitter:latest
+docker run -v "$(pwd)/nitter.conf:/src/nitter.conf:ro" \
+  -v "$(pwd)/sessions.jsonl:/src/sessions.jsonl:ro" \
+  -d --network host ghcr.io/perennialtech/nitter:latest
 ```
 
-Using docker-compose to run both Nitter and Redis as different containers:
+Use `compose.yml` to run both Nitter and Redis as different containers:
 Change `redisHost` from `localhost` to `nitter-redis` in `nitter.conf`, then run:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-Note the Docker commands expect a `nitter.conf` file in the directory you run
-them.
+Note the Docker commands mount `nitter.conf` (and `sessions.jsonl` for
+docker-compose) from the directory you run them in. If a mounted file doesn't
+exist, Docker silently creates a directory in its place and the container fails
+with `not a directory: Are you trying to mount a directory onto a file`. Remove
+that directory and create the file as shown above.
 
 ### systemd
 
@@ -194,6 +219,8 @@ lines). If you're running the Docker image, you can do this:
 `docker logs --follow *nitter container id*`
 
 ## Contact
+
+For build and test instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Feel free to join our [Matrix channel](https://matrix.to/#/#nitter:matrix.org).
 You can email me at zedeus@pm.me if you wish to contact me personally.

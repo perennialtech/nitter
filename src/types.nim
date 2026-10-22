@@ -11,11 +11,12 @@ type
   BadClientError* = object of CatchableError
 
   TimelineKind* {.pure.} = enum
-    tweets, replies, media
+    tweets, replies, media, articles
 
   ApiUrl* = object
     endpoint*: string
     params*: seq[(string, string)]
+    skipTid*: bool
 
   ApiReq* = object
     oauth*: ApiUrl
@@ -60,6 +61,7 @@ type
     rateLimited = 88
     expiredToken = 89
     listIdOrSlug = 112
+    timelineUnavailable = 131
     tweetNotFound = 144
     tweetNotAuthorized = 179
     forbidden = 200
@@ -96,6 +98,59 @@ type
     suspended*: bool
     joinDate*: DateTime
 
+  AccountInfo* = object
+    username*: string
+    fullname*: string
+    userPic*: string
+    joinDate*: DateTime
+    verifiedType*: VerifiedType
+    suspended*: bool
+    basedIn*: string
+    source*: string
+    usernameChanges*: int
+    lastUsernameChange*: DateTime
+    affiliateUsername*: string
+    affiliateLabel*: string
+    isIdentityVerified*: bool
+    verifiedSince*: DateTime
+    overrideVerifiedYear*: int
+
+  Broadcast* = object
+    id*: string
+    title*: string
+    state*: string
+    thumb*: string
+    mediaKey*: string
+    m3u8Url*: string
+    totalWatched*: int
+    startTime*: DateTime
+    endTime*: DateTime
+    replayStart*: int
+    availableForReplay*: bool
+    user*: User
+
+  SpaceParticipant* = object
+    userId*: string
+    username*: string
+    displayName*: string
+    avatarUrl*: string
+    isVerified*: bool
+
+  AudioSpace* = object
+    id*: string
+    title*: string
+    state*: string
+    mediaKey*: string
+    m3u8Url*: string
+    totalLiveListeners*: int
+    totalReplayWatched*: int
+    startTime*: DateTime
+    endTime*: DateTime
+    availableForReplay*: bool
+    creator*: User
+    admins*: seq[SpaceParticipant]
+    speakers*: seq[SpaceParticipant]
+
   VideoType* = enum
     m3u8 = "application/x-mpegURL"
     mp4 = "video/mp4"
@@ -119,10 +174,15 @@ type
     variants*: seq[VideoVariant]
 
   QueryKind* = enum
-    posts, replies, media, users, tweets, userList
+    posts, replies, media, users, tweets, userList, followers, following, lists, top,
+    articles
+
+  RankingMode* = enum
+    Relevance, Recency, Likes
 
   Query* = object
     kind*: QueryKind
+    view*: string
     text*: string
     filters*: seq[string]
     includes*: seq[string]
@@ -136,10 +196,27 @@ type
   Gif* = object
     url*: string
     thumb*: string
+    altText*: string
 
   Photo* = object
     url*: string
     altText*: string
+
+  MediaKind* = enum
+    photoMedia
+    videoMedia
+    gifMedia
+
+  Media* = object
+    case kind*: MediaKind
+    of photoMedia:
+      photo*: Photo
+    of videoMedia:
+      video*: Video
+    of gifMedia:
+      gif*: Gif
+
+  MediaEntities* = seq[Media]
 
   GalleryPhoto* = object
     url*: string
@@ -147,6 +224,44 @@ type
     color*: string
 
   PhotoRail* = seq[GalleryPhoto]
+
+  Article* = ref object
+    title*: string
+    coverImage*: string
+    user*: User
+    time*: DateTime
+    stats*: TweetStats
+    paragraphs*: seq[ArticleParagraph]
+    entities*: Table[int, ArticleEntity]
+    media*: Table[string, ArticleMedia]
+
+  ArticleParagraph* = object
+    text*: string
+    kind*: string
+    inlineStyles*: seq[ArticleStyle]
+    entityRanges*: seq[ArticleEntityRange]
+
+  ArticleStyle* = object
+    offset*: int
+    length*: int
+    style*: string
+
+  ArticleEntityRange* = object
+    offset*: int
+    length*: int
+    key*: int
+
+  ArticleEntity* = object
+    kind*: string
+    url*: string
+    mediaIds*: seq[string]
+    tweetId*: string
+    markdown*: string
+    caption*: string
+
+  ArticleMedia* = object
+    kind*: string
+    url*: string
 
   Poll* = object
     options*: seq[string]
@@ -197,6 +312,12 @@ type
     likes*: int
     views*: int
 
+  ArticlePreview* = object
+    title*: string
+    previewText*: string
+    coverImage*: string
+    tweetId*: int64
+
   Tweet* = ref object
     id*: int64
     threadId*: int64
@@ -215,13 +336,17 @@ type
     stats*: TweetStats
     retweet*: Option[Tweet]
     attribution*: Option[User]
+    attributionLink*: string
     mediaTags*: seq[User]
     quote*: Option[Tweet]
     card*: Option[Card]
     poll*: Option[Poll]
-    gif*: Option[Gif]
-    video*: Option[Video]
-    photos*: seq[Photo]
+    media*: MediaEntities
+    history*: seq[int64]
+    note*: string
+    isAd*: bool
+    isAI*: bool
+    articlePreview*: Option[ArticlePreview]
 
   Tweets* = seq[Tweet]
 
@@ -235,12 +360,17 @@ type
     content*: Tweets
     hasMore*: bool
     cursor*: string
+    related*: bool
 
   Conversation* = ref object
     tweet*: Tweet
     before*: Chain
     after*: Chain
     replies*: Result[Chain]
+
+  EditHistory* = object
+    latest*: Tweet
+    history*: Tweets
 
   Timeline* = Result[Tweets]
 
@@ -249,6 +379,7 @@ type
     photoRail*: PhotoRail
     pinned*: Option[Tweet]
     tweets*: Timeline
+    accountInfo*: AccountInfo
 
   List* = object
     id*: string
@@ -258,6 +389,29 @@ type
     description*: string
     members*: int
     banner*: string
+
+  ListSearchResult* = object
+    list*: List
+    owner*: User
+    followersContext*: string
+    facepiles*: seq[string]
+
+  CommunityRule* = object
+    name*: string
+    description*: string
+
+  Community* = object
+    id*: string
+    name*: string
+    description*: string
+    memberCount*: int
+    banner*: string
+    creator*: User
+    category*: string
+    joinPolicy*: string
+    createdAt*: DateTime
+    rules*: seq[CommunityRule]
+    hashtags*: seq[string]
 
   GlobalObjects* = ref object
     tweets*: Table[string, Tweet]
@@ -275,13 +429,20 @@ type
     hmacKey*: string
     base64Media*: bool
     minTokens*: int
-    enableRss*: bool
+    enableRSSUserTweets*: bool
+    enableRSSUserReplies*: bool
+    enableRSSUserMedia*: bool
+    enableRSSUserArticles*: bool
+    enableRSSSearch*: bool
+    enableRSSList*: bool
     enableDebug*: bool
     proxy*: string
     proxyAuth*: string
     apiProxy*: string
     disableTid*: bool
     maxConcurrentReqs*: int
+    maxRetries*: int
+    retryDelayMs*: int
 
     rssCacheTime*: int
     listCacheTime*: int
@@ -300,3 +461,24 @@ proc contains*(thread: Chain; tweet: Tweet): bool =
 
 proc add*(timeline: var seq[Tweets]; tweet: Tweet) =
   timeline.add @[tweet]
+
+proc getPhotos*(tweet: Tweet): seq[Photo] =
+  tweet.media.filterIt(it.kind == photoMedia).mapIt(it.photo)
+
+proc getVideos*(tweet: Tweet): seq[Video] =
+  tweet.media.filterIt(it.kind == videoMedia).mapIt(it.video)
+
+proc hasPhotos*(tweet: Tweet): bool =
+  tweet.media.anyIt(it.kind == photoMedia)
+
+proc hasVideos*(tweet: Tweet): bool =
+  tweet.media.anyIt(it.kind == videoMedia)
+
+proc hasGifs*(tweet: Tweet): bool =
+  tweet.media.anyIt(it.kind == gifMedia)
+
+proc getThumb*(media: Media): string =
+  case media.kind
+  of photoMedia: media.photo.url
+  of videoMedia: media.video.thumb
+  of gifMedia: media.gif.thumb

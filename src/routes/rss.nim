@@ -60,14 +60,15 @@ template respRss*(rss, page) =
 proc createRssRouter*(cfg: Config) =
   router rss:
     get "/search/rss":
-      cond cfg.enableRss
+      if not cfg.enableRSSSearch:
+        resp Http403, showError("RSS feed is disabled", cfg)
       if @"q".len > 200:
         resp Http400, showError("Search input too long.", cfg)
 
       let
         prefs = requestPrefs()
         query = initQuery(params(request))
-      if query.kind != tweets:
+      if query.kind notin {QueryKind.tweets, QueryKind.top, QueryKind.media}:
         resp Http400, showError("Only Tweet searches are allowed for RSS feeds.", cfg)
 
       let
@@ -86,8 +87,9 @@ proc createRssRouter*(cfg: Config) =
       respRss(rss, "Search")
 
     get "/@name/rss":
-      cond cfg.enableRss
       cond '.' notin @"name"
+      if not cfg.enableRSSUserTweets:
+        resp Http403, showError("RSS feed is disabled", cfg)
       let
         prefs = requestPrefs()
         name = @"name"
@@ -103,19 +105,17 @@ proc createRssRouter*(cfg: Config) =
       respRss(rss, "User")
 
     get "/@name/@tab/rss":
-      cond cfg.enableRss
       cond '.' notin @"name"
-      cond @"tab" in ["with_replies", "media", "search"]
+      cond @"tab" in ["with_replies", "media", "search", "articles"]
+      # articles can't be approximated by search, so multi-user is unsupported
+      cond not (@"tab" == "articles" and ',' in @"name")
+      if not cfg.tabRssEnabled(@"tab"):
+        resp Http403, showError("RSS feed is disabled", cfg)
       let
         prefs = requestPrefs()
         name = @"name"
         tab = @"tab"
-        query =
-          case tab
-          of "with_replies": getReplyQuery(name)
-          of "media": getMediaQuery(name)
-          of "search": initQuery(params(request), name=name)
-          else: Query(fromUser: @[name])
+        query = request.getQuery(tab, name, prefs)
 
       let searchKey = if tab != "search": ""
                       else: ":" & $hash(genQueryUrl(query))
@@ -132,8 +132,9 @@ proc createRssRouter*(cfg: Config) =
       respRss(rss, "User")
 
     get "/@name/lists/@slug/rss":
-      cond cfg.enableRss
       cond @"name" != "i"
+      if not cfg.enableRSSList:
+        resp Http403, showError("RSS feed is disabled", cfg)
       let
         slug = decodeUrl(@"slug")
         list = await getCachedList(@"name", slug)
@@ -149,7 +150,8 @@ proc createRssRouter*(cfg: Config) =
         redirect(url)
 
     get "/i/lists/@id/rss":
-      cond cfg.enableRss
+      if not cfg.enableRSSList:
+        resp Http403, showError("RSS feed is disabled", cfg)
       let
         prefs = requestPrefs()
         id = @"id"

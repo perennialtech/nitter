@@ -9,22 +9,56 @@ video {
 .gallery-video {
   display: flex;
   overflow: hidden;
+  
+  &.card-container {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  > .attachment {
+    min-height: 80px;
+    min-width: 200px;
+    max-height: 530px;
+    margin: 0;
+
+    img {
+      max-height: 100%;
+      max-width: 100%;
+    }
+  }
 }
 
-.gallery-video.card-container {
-  flex-direction: column;
-  width: 100%;
+.video-download {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  color: var(--accent);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+
+  .icon-container {
+    margin: 0;
+  }
+
+  .icon-download-alt {
+    font-size: 18px;
+  }
 }
 
-.video-container {
-  min-height: 80px;
-  min-width: 200px;
-  max-height: 530px;
-  margin: 0;
+.attachment:hover .video-download {
+  opacity: 1;
 
-  img {
-    max-height: 100%;
-    max-width: 100%;
+  &:hover {
+    color: var(--fg_color);
+  }
+}
+
+@media (hover: none) {
+  .video-download {
+    opacity: 1;
   }
 }
 

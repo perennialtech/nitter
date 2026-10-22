@@ -13,3 +13,8 @@ nitter.conf
 guest_accounts.json*
 sessions.json*
 dump.rdb
+*.bak
+/tools/*.json*
+nimbledeps/
+nimble.paths
+nimble.develop

@@ -72,7 +72,6 @@ template getTypeName*(js: JsonNode): string =
 template getEntryId*(e: JsonNode): string =
   e{"entryId"}.getStr(e{"entry_id"}.getStr)
 
-
 template parseTime(time: string; f: static string; flen: int): DateTime =
   if time.len != flen: return
   parse(time, f, utc())
@@ -89,11 +88,19 @@ proc getTimeFromMs*(js: JsonNode): DateTime =
   let seconds = ms div 1000
   return fromUnix(seconds).utc()
 
+proc getTimeFromMsStr*(js: JsonNode): DateTime =
+  var ms: int64
+  try: ms = parseBiggestInt(js.getStr("0"))
+  except ValueError: return
+  if ms == 0: return
+  let seconds = ms div 1000
+  return fromUnix(seconds).utc()
+
 proc getId*(id: string): int64 {.inline.} =
   let start = id.rfind("-")
-  if start < 0:
-    return parseBiggestInt(id)
-  return parseBiggestInt(id[start + 1 ..< id.len])
+  try:
+    parseBiggestInt(if start < 0: id else: id[start + 1 ..< id.len])
+  except ValueError: 0'i64
 
 proc getId*(js: JsonNode): int64 {.inline.} =
   case js.kind
@@ -178,12 +185,16 @@ proc extractSlice(js: JsonNode): Slice[int] =
   result = js["indices"][0].getInt ..< js["indices"][1].getInt
 
 proc extractUrls(result: var seq[ReplaceSlice]; js: JsonNode;
-                 textLen: int; hideTwitter = false) =
+                 textLen: int; hideTwitter = false;
+                 hideArticle = false) =
   let
     url = js.getExpandedUrl
     slice = js.extractSlice
 
-  if hideTwitter and slice.b.succ >= textLen and url.isTwitterUrl:
+  if hideArticle and url.isTwitterUrl and "/article/" in url:
+    if slice.a < textLen:
+      result.add ReplaceSlice(kind: rkRemove, slice: slice)
+  elif hideTwitter and slice.b.succ >= textLen and url.isTwitterUrl:
     if slice.a < textLen:
       result.add ReplaceSlice(kind: rkRemove, slice: slice)
   else:
@@ -195,28 +206,41 @@ proc extractHashtags(result: var seq[ReplaceSlice]; js: JsonNode) =
 
 proc replacedWith(runes: seq[Rune]; repls: openArray[ReplaceSlice];
                   textSlice: Slice[int]): string =
+  let
+    runeLen = runes.len
+    safeStart = max(0, textSlice.a)
+    safeEnd = min(runeLen, textSlice.b)
+
+  var validRepls: seq[ReplaceSlice]
+  for rep in repls:
+    if rep.slice.a >= 0 and rep.slice.b >= 0 and rep.slice.b < runeLen and rep.slice.a <= rep.slice.b:
+      validRepls.add rep
+
   template extractLowerBound(i: int; idx): int =
-    if i > 0: repls[idx].slice.b.succ else: textSlice.a
+    if i > 0: min(validRepls[idx].slice.b.succ, runeLen) else: safeStart
 
   result = newStringOfCap(runes.len)
 
-  for i, rep in repls:
-    result.add $runes[extractLowerBound(i, i - 1) ..< rep.slice.a]
+  for i, rep in validRepls:
+    let lower = extractLowerBound(i, i - 1)
+    if lower < rep.slice.a:
+      result.add $runes[lower ..< rep.slice.a]
     case rep.kind
     of rkHashtag:
-      let
-        name = $runes[rep.slice.a.succ .. rep.slice.b]
-        symbol = $runes[rep.slice.a]
-      result.add a(symbol & name, href = "/search?f=tweets&q=%23" & name)
+      if rep.slice.a.succ <= rep.slice.b:
+        let
+          name = $runes[rep.slice.a.succ .. rep.slice.b]
+          symbol = $runes[rep.slice.a]
+        result.add a(symbol & name, href = "/search?f=tweets&q=%23" & name)
     of rkMention:
-      result.add a($runes[rep.slice], href = rep.url, title = rep.display)
+      result.add a($runes[rep.slice], href = rep.url, title = escape(rep.display))
     of rkUrl:
-      result.add a(rep.display, href = rep.url)
+      result.add a(escape(rep.display), href = rep.url)
     of rkRemove:
       discard
 
-  let rest = extractLowerBound(repls.len, ^1) ..< textSlice.b
-  if rest.a <= rest.b:
+  let rest = extractLowerBound(validRepls.len, ^1) ..< safeEnd
+  if rest.a >= 0 and rest.a <= rest.b and rest.b <= runeLen:
     result.add $runes[rest]
 
 proc deduplicate(s: var seq[ReplaceSlice]) =
@@ -257,7 +281,7 @@ proc expandUserEntities*(user: var User; js: JsonNode) =
                      .replacef(htRegex, htReplace)
 
 proc expandTextEntities(tweet: Tweet; entities: JsonNode; text: string; textSlice: Slice[int];
-                        replyTo=""; hasRedundantLink=false) =
+                        replyTo=""; hasRedundantLink=false; hasArticle=false) =
   let hasCard = tweet.card.isSome
 
   var replacements = newSeq[ReplaceSlice]()
@@ -268,7 +292,8 @@ proc expandTextEntities(tweet: Tweet; entities: JsonNode; text: string; textSlic
       if urlStr.len == 0 or urlStr notin text:
         continue
 
-      replacements.extractUrls(u, textSlice.b, hideTwitter = hasRedundantLink)
+      replacements.extractUrls(u, textSlice.b, hideTwitter = hasRedundantLink,
+                               hideArticle = hasArticle)
 
       if hasCard and u{"url"}.getStr == get(tweet.card).url:
         get(tweet.card).url = u.getExpandedUrl
@@ -305,7 +330,7 @@ proc expandTextEntities(tweet: Tweet; entities: JsonNode; text: string; textSlic
 
   tweet.text = text.toRunes.replacedWith(replacements, textSlice).strip(leading=false)
 
-proc expandTweetEntities*(tweet: Tweet; js: JsonNode) =
+proc expandTweetEntities*(tweet: Tweet; js: JsonNode; hasArticle=false) =
   let
     entities = ? js{"entities"}
     textRange = js{"display_text_range"}
@@ -319,23 +344,99 @@ proc expandTweetEntities*(tweet: Tweet; js: JsonNode) =
       replyTo = reply.getStr
       tweet.reply.add replyTo
 
-  tweet.expandTextEntities(entities, tweet.text, textSlice, replyTo, hasQuote or hasJobCard)
+  tweet.expandTextEntities(entities, tweet.text, textSlice, replyTo,
+                           hasQuote or hasJobCard, hasArticle)
+
+proc expandTextEntitiesV2(tweet: Tweet; js: JsonNode; text: string; textSlice: Slice[int];
+                          hasRedundantLink=false; hasArticle=false) =
+  let hasCard = tweet.card.isSome
+
+  var replacements = newSeq[ReplaceSlice]()
+
+  with urls, js{"url_entities"}:
+    for u in urls:
+      let urlStr = u["url"].getStr
+      if urlStr.len == 0 or urlStr notin text:
+        continue
+
+      replacements.extractUrls(u, textSlice.b, hideTwitter = hasRedundantLink,
+                               hideArticle = hasArticle)
+
+      if hasCard and u{"url"}.getStr == get(tweet.card).url:
+        get(tweet.card).url = u.getExpandedUrl
+
+  with hashtags, js{"details", "hashtag_entities"}:
+    for hashtag in hashtags:
+      replacements.extractHashtags(hashtag)
+
+  with cashtags, js{"details", "cashtag_entities"}:
+    for cashtag in cashtags:
+      replacements.extractHashtags(cashtag)
+
+  with mentions, js{"mention_entities"}:
+    for mention in mentions:
+      let
+        name = mention{"screen_name"}.getStr
+        slice = mention.extractSlice
+        idx = tweet.reply.find(name)
+
+      if slice.a >= textSlice.a:
+        replacements.add ReplaceSlice(kind: rkMention, slice: slice,
+          url: "/" & name, display: mention["name"].getStr)
+      elif idx == -1 and tweet.replyId != 0:
+        tweet.reply.add name
+
+  replacements.deduplicate
+  replacements.sort(cmp)
+
+  tweet.text = text.toRunes.replacedWith(replacements, textSlice).strip(leading=false)
+
+proc expandTweetEntitiesV2*(tweet: Tweet; js: JsonNode; hasArticle=false) =
+  let
+    textRange = js{"details", "display_text_range"}
+    textSlice = textRange{0}.getInt .. textRange{1}.getInt
+    hasQuote = "quoted_tweet_results" in js
+    hasJobCard = tweet.card.isSome and get(tweet.card).kind == jobDetails
+    hasAttribution = tweet.attribution.isSome
+
+  tweet.expandTextEntitiesV2(js, tweet.text, textSlice,
+                             hasQuote or hasJobCard or hasAttribution,
+                             hasArticle)
 
 proc expandNoteTweetEntities*(tweet: Tweet; js: JsonNode) =
   let
     entities = ? js{"entity_set"}
     text = js{"text"}.getStr.multiReplace(("<", unicodeOpen), (">", unicodeClose))
     textSlice = 0..text.runeLen
+    hasAttribution = tweet.attribution.isSome
 
-  tweet.expandTextEntities(entities, text, textSlice)
+  tweet.expandTextEntities(entities, text, textSlice, hasRedundantLink=hasAttribution)
 
   tweet.text = tweet.text.multiReplace((unicodeOpen, xmlOpen), (unicodeClose, xmlClose))
 
+proc expandBirdwatchEntities*(text: string; entities: JsonNode): string =
+  let runes = text.toRunes
+  var replacements: seq[ReplaceSlice]
+
+  for entity in entities:
+    let
+      fromIdx = entity{"from_index"}.getInt
+      toIdx = entity{"to_index"}.getInt
+      url = entity{"ref", "url"}.getStr
+    if url.len > 0:
+      replacements.add ReplaceSlice(
+        kind: rkUrl,
+        slice: fromIdx ..< toIdx,
+        url: url,
+        display: $runes[fromIdx ..< min(toIdx, runes.len)]
+      )
+
+  replacements.sort(cmp)
+  result = runes.replacedWith(replacements, 0 ..< runes.len)
+
 proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
   let url =
-    if t.photos.len > 0: t.photos[0].url
-    elif t.video.isSome: get(t.video).thumb
-    elif t.gif.isSome: get(t.gif).thumb
+    if t.media.len > 0: t.media[0].getThumb
     elif t.card.isSome: get(t.card).image
     else: ""
 

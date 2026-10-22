@@ -1,6 +1,6 @@
 import options, strutils
 import jsony
-import user, utils, ../types/[graphuser, graphlistmembers]
+import user, utils, ../types/[graphuser, graphlistmembers, graphfollowers]
 from ../../types import User, VerifiedType, Result, Query, QueryKind
 
 proc parseUserResult*(userResult: UserResult): User =
@@ -10,10 +10,15 @@ proc parseUserResult*(userResult: UserResult): User =
     result.verifiedType = blue
 
   if result.username.len == 0 and userResult.core.screenName.len > 0:
+    # Modern UserByRestId/UserByScreenName shape: `legacy` is empty and the data
+    # lives in typed sub-objects (core/relationship_counts/tweet_counts/etc.).
     result.id = userResult.restId
     result.username = userResult.core.screenName
     result.fullname = userResult.core.name
     result.userPic = userResult.avatar.imageUrl.replace("_normal", "")
+
+    if userResult.banner.imageUrl.len > 0:
+      result.banner = userResult.banner.imageUrl & "/1500x500"
 
     if userResult.privacy.isSome:
       result.protected = userResult.privacy.get.protected
@@ -29,8 +34,23 @@ proc parseUserResult*(userResult: UserResult): User =
       if v.verifiedType != VerifiedType.none:
         result.verifiedType = v.verifiedType
 
-    if userResult.profileBio.isSome and result.bio.len == 0:
-      result.bio = userResult.profileBio.get.description
+    if userResult.relationshipCounts.isSome:
+      let rc = userResult.relationshipCounts.get
+      result.followers = rc.followers
+      result.following = rc.following
+
+    if userResult.tweetCounts.isSome:
+      let tc = userResult.tweetCounts.get
+      result.tweets = tc.tweets
+      result.media = tc.mediaTweets
+
+    if userResult.actionCounts.isSome:
+      result.likes = userResult.actionCounts.get.favoritesCount
+
+    if userResult.profileBio.isSome:
+      let bio = userResult.profileBio.get
+      result.bio = bio.description
+      result.expandUserEntities(bio.entities)
 
 proc parseGraphUser*(json: string): User =
   if json.len == 0 or json[0] != '{':
@@ -57,6 +77,28 @@ proc parseGraphListMembers*(json, cursor: string): Result[User] =
 
   let raw = json.fromJson(GraphListMembers)
   for instruction in raw.data.list.membersTimeline.timeline.instructions:
+    if instruction.kind == "TimelineAddEntries":
+      for entry in instruction.entries:
+        case entry.content.entryType
+        of TimelineTimelineItem:
+          let userResult = entry.content.itemContent.userResults.result
+          if userResult.restId.len > 0:
+            result.content.add parseUserResult(userResult)
+        of TimelineTimelineCursor:
+          if entry.content.cursorType == "Bottom":
+            result.bottom = entry.content.value
+
+proc parseGraphFollowers*(json, cursor: string; kind: QueryKind): Result[User] =
+  result = Result[User](
+    beginning: cursor.len == 0,
+    query: Query(kind: kind)
+  )
+
+  if json.len == 0 or json[0] != '{':
+    return
+
+  let raw = json.fromJson(GraphFollowers)
+  for instruction in raw.data.user.result.timeline.timeline.instructions:
     if instruction.kind == "TimelineAddEntries":
       for entry in instruction.entries:
         case entry.content.entryType
