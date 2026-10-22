@@ -14,6 +14,24 @@ nim r tests/test_ssrf_1411.nim
 The last command runs the upstream media URL security regression tests without
 Twitter credentials.
 
+## HTTP proxy regression tests
+
+With Python 3 and the OpenSSL command installed, run:
+
+```bash
+python3 tests/test_http_proxy.py -v
+```
+
+The tests compile Nitter's HTTP pool and check plain HTTP and HTTPS CONNECT
+requests, query strings, connection reuse, and updated headers against a local
+proxy. They use a temporary trusted certificate and need no account sessions
+or internet access.
+
+Docker builds run these tests with the image's pinned compiler before building
+Nitter. The build applies the upstream
+[Nim HTTP CONNECT fix](https://github.com/nim-lang/Nim/commit/72e24284ef1c64972e30344bf8f719cb9b57ec2b)
+to Nim 2.2.6; keep that backport until the base image includes the fix.
+
 ## Offline smoke tests
 
 Start Redis or Valkey and a local Nitter instance using your `nitter.conf`.

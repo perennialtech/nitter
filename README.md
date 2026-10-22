@@ -92,6 +92,11 @@ To compile Nitter you need a Nim installation, see
 [nim-lang.org](https://nim-lang.org/install.html) for details. It is possible
 to install it system-wide or in the user directory you create below.
 
+Nim 2.2.6 breaks HTTPS requests through HTTP CONNECT proxies. For native builds
+that use one, choose a fixed compiler, such as Nim 2.2.8 or newer. The provided
+Docker image includes the fix. See the [proxy regression tests](CONTRIBUTING.md#http-proxy-regression-tests)
+to check your compiler.
+
 To compile the scss files, you need to install `libsass`. On Ubuntu and Debian,
 you can use `libsass-dev`.
 

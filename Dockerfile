@@ -1,7 +1,11 @@
-FROM nimlang/nim:2.2.6-alpine-regular as nim
+FROM nimlang/nim:2.2.6-alpine-regular AS nim
 LABEL maintainer="setenforce@protonmail.com"
 
-RUN apk --no-cache add libsass-dev pcre
+RUN apk --no-cache add libsass-dev pcre patch python3 openssl
+
+# HTTPS tunnels require origin-form request targets (Nim issue #25319).
+COPY tools/nim-httpclient-connect.patch /tmp/nim-httpclient-connect.patch
+RUN patch --batch --forward -p1 -d /nim < /tmp/nim-httpclient-connect.patch
 
 WORKDIR /src/nitter
 
@@ -9,7 +13,8 @@ COPY nitter.nimble .
 RUN nimble install -y --depsOnly
 
 COPY . .
-RUN nimble build -d:danger -d:lto -d:strip --mm:refc \
+RUN python3 tests/test_http_proxy.py -v \
+    && nimble build -d:danger -d:lto -d:strip --mm:refc \
     && nimble scss \
     && nimble md
 

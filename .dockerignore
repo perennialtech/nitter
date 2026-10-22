@@ -4,4 +4,6 @@ LICENSE
 docker-compose.yml
 compose.yml
 Dockerfile
-tests/
+tests/*
+!tests/test_http_proxy.py
+!tests/http_proxy_client.nim
