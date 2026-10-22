@@ -7,3 +7,6 @@ Dockerfile
 tests/*
 !tests/test_http_proxy.py
 !tests/http_proxy_client.nim
+!tests/test_ssrf_1411.nim
+!tests/test_formatters.nim
+!tests/test_timeline.nim

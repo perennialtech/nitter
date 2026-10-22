@@ -1,6 +1,7 @@
 """Exercise Nitter's HTTP pool through local HTTP and HTTPS CONNECT proxies."""
 
 from pathlib import Path
+import base64
 import socket
 import ssl
 import subprocess
@@ -53,7 +54,7 @@ class HttpProxyTests(unittest.TestCase):
                 headers[key.lower()] = value.strip()
         return lines[0], headers
 
-    def proxy_requests(self, tls):
+    def proxy_requests(self, tls, url_auth="", auth=""):
         observed, errors = [], []
         listener = socket.socket()
         self.addCleanup(listener.close)
@@ -85,10 +86,11 @@ class HttpProxyTests(unittest.TestCase):
         server = threading.Thread(target=serve, daemon=True)
         server.start()
         scheme = "https" if tls else "http"
+        authority = f"{url_auth}@" if url_auth else ""
         try:
             result = subprocess.run(
-                [str(self.client), f"http://127.0.0.1:{port}",
-                 f"{scheme}://origin.test{self.path}", str(self.certificate)],
+                [str(self.client), f"http://{authority}127.0.0.1:{port}",
+                 f"{scheme}://origin.test{self.path}", str(self.certificate), auth],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, timeout=30,
             )
@@ -114,6 +116,35 @@ class HttpProxyTests(unittest.TestCase):
         self.assertEqual(requests[0][0], "CONNECT origin.test:443 HTTP/1.1")
         self.assertEqual(requests[0][1]["host"], "origin.test:443")
         self.check_requests(requests[1:], self.path)
+
+    def check_auth(self, requests, credentials):
+        self.check_requests(requests, "http://origin.test" + self.path)
+        expected = "Basic " + base64.b64encode(credentials.encode()).decode()
+        for _, headers in requests:
+            self.assertEqual(headers["proxy-authorization"], expected)
+
+    def test_http_proxy_accepts_url_auth(self):
+        self.check_auth(self.proxy_requests(tls=False, url_auth="user:password"), "user:password")
+
+    def test_http_proxy_accepts_separate_auth(self):
+        self.check_auth(self.proxy_requests(tls=False, auth="user:password"), "user:password")
+
+    def test_http_proxy_separate_auth_overrides_url_auth(self):
+        requests = self.proxy_requests(tls=False, url_auth="old:password", auth="new:password")
+        self.check_auth(requests, "new:password")
+
+    def test_http_proxy_auth_allows_colons_in_password(self):
+        self.check_auth(self.proxy_requests(tls=False, auth="user:pass:word"), "user:pass:word")
+
+    def test_http_proxy_rejects_auth_without_separator(self):
+        result = subprocess.run(
+            [str(self.client), "http://127.0.0.1:1", "http://origin.test/",
+             str(self.certificate), "invalid"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, timeout=10,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("proxyAuth must contain username:password", result.stdout)
 
 
 if __name__ == "__main__":

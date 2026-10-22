@@ -1,6 +1,6 @@
 # Building and testing
 
-Install Nim 2.0 or newer, libsass, and libpcre as described in the
+Install Nim 2.2.12 or newer, libsass, and libpcre as described in the
 [installation instructions](README.md#installation). From the repository root:
 
 ```bash
@@ -9,10 +9,12 @@ nimble build -Y
 nimble scss
 nimble md
 nim r tests/test_ssrf_1411.nim
+nim r tests/test_formatters.nim
+nim r tests/test_timeline.nim
 ```
 
-The last command runs the upstream media URL security regression tests without
-Twitter credentials.
+The last three commands test media URL security, HTML text formatting, and
+pinned tweet rendering without Twitter credentials.
 
 ## HTTP proxy regression tests
 
@@ -24,13 +26,11 @@ python3 tests/test_http_proxy.py -v
 
 The tests compile Nitter's HTTP pool and check plain HTTP and HTTPS CONNECT
 requests, query strings, connection reuse, and updated headers against a local
-proxy. They use a temporary trusted certificate and need no account sessions
-or internet access.
+proxy, including credentials in the proxy URL or `proxyAuth`. They use a
+temporary trusted certificate and need no account sessions or internet access.
 
 Docker builds run these tests with the image's pinned compiler before building
-Nitter. The build applies the upstream
-[Nim HTTP CONNECT fix](https://github.com/nim-lang/Nim/commit/72e24284ef1c64972e30344bf8f719cb9b57ec2b)
-to Nim 2.2.6; keep that backport until the base image includes the fix.
+Nitter.
 
 ## Offline smoke tests
 
@@ -48,9 +48,8 @@ NITTER_TEST_URL=http://127.0.0.1:8080 \
 
 The [image workflow](.github/workflows/build-docker.yml) calls the reusable
 [test workflow](.github/workflows/run-tests.yml) for pull requests to `master`
-and before publishing images. It checks the supported Nim versions, generates
-assets, runs the security regression tests, and tests local pages and
-Catppuccin themes.
+and before publishing images. It checks Nim 2.2.12 and devel, generates assets,
+runs the security regression tests, and tests local pages and Catppuccin themes.
 
 The upstream browser suite makes live Twitter requests and requires working
 account sessions. To enable it in GitHub Actions, configure the repository's

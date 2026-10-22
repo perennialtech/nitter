@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import strutils, strformat, sequtils, unicode, tables, options
+import strutils, strformat, sequtils, unicode, tables
 import karax/[karaxdsl, vdom]
 
 import renderutils, timeline
@@ -120,7 +120,7 @@ proc renderSearchPanel*(query: Query): VNode =
           genNumberInput("min_faves", "", query.minLikes, "Number...", autofocus=false)
 
 proc renderTweetSearch*(results: Timeline; prefs: Prefs; path: string;
-                        pinned=none(Tweet)): VNode =
+                        pinned: Tweet=nil): VNode =
   let query = results.query
   let containerClass =
     if query.fromUser.len == 0 and query.kind == QueryKind.media and

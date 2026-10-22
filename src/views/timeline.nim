@@ -206,14 +206,13 @@ proc filterThreads(threads: seq[Tweets]; prefs: Prefs): seq[Tweets] =
     result.add(thread)
 
 proc renderTimelineTweets*(results: Timeline; prefs: Prefs; path: string;
-                           pinned=none(Tweet)): VNode =
+                           pinned: Tweet=nil): VNode =
   buildHtml(tdiv(class=results.query.timelineViewClass)):
     if not results.beginning:
       renderNewer(results.query, parseUri(path).path)
 
-    if not prefs.hidePins and pinned.isSome:
-      let tweet = get pinned
-      renderTweet(tweet, prefs, path)
+    if not prefs.hidePins and pinned != nil:
+      renderTweet(pinned, prefs, path)
 
     if results.content.len == 0:
       if not results.beginning:

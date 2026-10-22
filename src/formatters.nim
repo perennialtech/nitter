@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import strutils, strformat, times, uri, tables, xmltree, htmlparser, htmlgen, math
+import strutils, strformat, times, uri, tables, xmltree, htmlgen, math
 import std/[enumerate, re]
+import pkg/htmlparser
 import types, utils, query
 
 const
@@ -43,13 +44,17 @@ proc shortLink*(text: string; length=28): string =
     
 proc stripHtml*(text: string; shorten=false): string =
   var html = parseHtml(text)
-  for el in html.findAll("a"):
-    let link = el.attr("href")
-    if "http" in link:
-      if el.len == 0: continue
-      el[0].text =
-        if shorten: link.shortLink
-        else: link
+  if html.kind == xnElement:
+    var links = html.findAll("a")
+    if html.tag == "a":
+      links.add html
+    for el in links:
+      let link = el.attr("href")
+      if "http" in link:
+        if el.len == 0: continue
+        el[0].text =
+          if shorten: link.shortLink
+          else: link
   html.innerText()
 
 proc sanitizeXml*(text: string): string =

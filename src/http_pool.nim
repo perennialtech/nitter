@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import httpclient
+import std/[httpclient, strutils, uri]
 
 type
   HttpPool* = ref object
@@ -14,7 +14,14 @@ proc setMaxHttpConns*(n: int) =
 
 proc setHttpProxy*(url: string; auth: string) =
   if url.len > 0:
-    proxy = newProxy(url, auth)
+    var proxyUrl = parseUri(url)
+    if auth.len > 0:
+      let parts = auth.split(':', maxsplit=1)
+      if parts.len != 2:
+        raise newException(ValueError, "proxyAuth must contain username:password")
+      proxyUrl.username = parts[0]
+      proxyUrl.password = parts[1]
+    proxy = newProxy(proxyUrl)
   else:
     proxy = nil
 
