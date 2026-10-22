@@ -173,8 +173,8 @@ Change `redisHost` from `localhost` to `nitter-redis` in `nitter.conf`, then run
 docker compose up -d
 ```
 
-Note the Docker commands mount `nitter.conf` (and `sessions.jsonl` for
-docker-compose) from the directory you run them in. If a mounted file doesn't
+The Docker and Compose commands mount `nitter.conf` and `sessions.jsonl`
+from the directory you run them in. If a mounted file doesn't
 exist, Docker silently creates a directory in its place and the container fails
 with `not a directory: Are you trying to mount a directory onto a file`. Remove
 that directory and create the file as shown above.
@@ -218,9 +218,11 @@ this: `journalctl -u nitter.service` (add `--follow` to see just the last 15
 lines). If you're running the Docker image, you can do this:
 `docker logs --follow *nitter container id*`
 
-## Contact
+## Contributing
 
 For build and test instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Contact
 
 Feel free to join our [Matrix channel](https://matrix.to/#/#nitter:matrix.org).
 You can email me at zedeus@pm.me if you wish to contact me personally.

@@ -18,8 +18,8 @@ Twitter credentials.
 
 Start Redis or Valkey and a local Nitter instance using your `nitter.conf`.
 These tests need Python 3 but no additional Python packages or valid Twitter
-sessions. They check local pages, generated assets, and all four Catppuccin
-themes without making Twitter requests:
+sessions; an empty `sessions.jsonl` file is sufficient. They check local pages,
+generated assets, and all four Catppuccin themes without making Twitter requests:
 
 ```bash
 NITTER_TEST_URL=http://127.0.0.1:8080 \
