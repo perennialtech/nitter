@@ -4,20 +4,39 @@ import jester, karax/vdom
 
 import router_utils
 import ".."/[types, redis_cache, formatters, query, api]
-import ../views/[general, profile, timeline, status, search]
+import ../views/[general, profile, timeline, status, search, about_account]
 
 export vdom
 export uri, sequtils
 export router_utils
 export redis_cache, formatters, query, api
-export profile, timeline, status
+export profile, timeline, status, about_account
 
-proc getQuery*(request: Request; tab, name: string): Query =
+proc tabRssEnabled*(cfg: Config; tab: string): bool =
   case tab
-  of "with_replies": getReplyQuery(name)
-  of "media": getMediaQuery(name)
-  of "search": initQuery(params(request), name=name)
-  else: Query(fromUser: @[name])
+  of "": cfg.enableRSSUserTweets
+  of "with_replies": cfg.enableRSSUserReplies
+  of "media": cfg.enableRSSUserMedia
+  of "articles": cfg.enableRSSUserArticles
+  of "search": cfg.enableRSSSearch
+  else: false
+
+proc getQuery*(request: Request; tab, name: string; prefs: Prefs): Query =
+  let view = request.params.getOrDefault("view")
+  case tab
+  of "with_replies":
+    result = getReplyQuery(name)
+  of "articles":
+    result = getArticlesQuery(name)
+  of "media":
+    result = getMediaQuery(name)
+    result.view =
+      if view in ["timeline", "grid", "gallery"]: view
+      else: prefs.mediaView.toLowerAscii
+  of "search":
+    result = initQuery(params(request), name=name)
+  else:
+    result = Query(fromUser: @[name])
 
 template skipIf[T](cond: bool; default; body: Future[T]): Future[T] =
   if cond:
@@ -45,20 +64,23 @@ proc fetchProfile*(after: string; query: Query; skipRail=false): Future[Profile]
 
   let
     rail =
-      skipIf(skipRail or query.kind == media, @[]):
+      skipIf(skipRail or query.kind == QueryKind.media, @[]):
         getCachedPhotoRail(userId)
 
     user = getCachedUser(name)
+    info = getCachedAccountInfo(name, fetch=false)
 
   result =
     case query.kind
     of posts: await getGraphUserTweets(userId, TimelineKind.tweets, after)
     of replies: await getGraphUserTweets(userId, TimelineKind.replies, after)
     of media: await getGraphUserTweets(userId, TimelineKind.media, after)
+    of QueryKind.articles: await getGraphUserTweets(userId, TimelineKind.articles, after)
     else: Profile(tweets: await getGraphTweetSearch(query, after))
 
   result.user = await user
   result.photoRail = await rail
+  result.accountInfo = await info
 
   result.tweets.query = query
 
@@ -111,17 +133,66 @@ proc createTimelineRouter*(cfg: Config) =
         resp Http400, showError("Missing screen_name parameter", cfg)
       redirect("/" & username)
 
+    get "/@name/about/?":
+      cond @"name".allCharsInSet({'a'..'z', 'A'..'Z', '0'..'9', '_'})
+      let
+        prefs = requestPrefs()
+        name = @"name"
+        info = await getCachedAccountInfo(name)
+      if info.suspended:
+        resp showError(getSuspended(name), cfg)
+      if info.username.len == 0:
+        resp Http404, showError("User \"" & name & "\" not found", cfg)
+      let aboutHtml = renderAboutAccount(info)
+      resp renderMain(aboutHtml, request, cfg, prefs,
+                      "About @" & info.username)
+
+    get "/@name/@kind/?":
+      cond @"kind" in ["followers", "following"]
+      cond '.' notin @"name"
+      cond @"name".allCharsInSet({'a'..'z', 'A'..'Z', '0'..'9', '_'})
+      let
+        prefs = requestPrefs()
+        name = @"name"
+        userId = await getUserId(name)
+
+      if userId.len == 0:
+        resp Http404, showError("User \"" & name & "\" not found", cfg)
+      if userId == "suspended":
+        resp showError(getSuspended(name), cfg)
+
+      let
+        cursor = getCursor()
+        isFollowers = @"kind" == "followers"
+        user = await getCachedUser(name)
+        results = if isFollowers: await getGraphFollowers(userId, cursor)
+                  else: await getGraphFollowing(userId, cursor)
+
+      if user.protected:
+        resp renderMain(renderProtected(user.username), request, cfg, prefs,
+                        "Protected account @" & name)
+
+      let
+        tab = if isFollowers: "Followers" else: "Following"
+        title = (if isFollowers: "People following @" else: "People followed by @") & name
+        html = renderUserList(user, results, prefs, request.path, tab)
+
+      resp renderMain(html, request, cfg, prefs, title,
+                      images = @[user.getUserPic("_400x400")])
+
     get "/@name/?@tab?/?":
       cond '.' notin @"name"
       cond @"name" notin ["pic", "gif", "video", "search", "settings", "login", "intent", "i"]
       cond @"name".allCharsInSet({'a'..'z', 'A'..'Z', '0'..'9', '_', ','})
-      cond @"tab" in ["with_replies", "media", "search", ""]
+      cond @"tab" in ["with_replies", "media", "search", "articles", ""]
+      # articles can't be approximated by search, so multi-user is unsupported
+      cond not (@"tab" == "articles" and ',' in @"name")
       let
         prefs = requestPrefs()
         after = getCursor()
         names = getNames(@"name")
 
-      var query = request.getQuery(@"tab", @"name")
+      var query = request.getQuery(@"tab", @"name", prefs)
       if names.len != 1:
         query.fromUser = names
 
@@ -129,7 +200,8 @@ proc createTimelineRouter*(cfg: Config) =
       if @"scroll".len > 0:
         if query.fromUser.len != 1:
           var timeline = await getGraphTweetSearch(query, after)
-          if timeline.content.len == 0: resp Http404
+          if timeline.content.len == 0: 
+            resp Http204
           timeline.beginning = true
           resp $renderTweetSearch(timeline, prefs, getPath())
         else:
@@ -139,7 +211,9 @@ proc createTimelineRouter*(cfg: Config) =
           resp $renderTimelineTweets(profile.tweets, prefs, getPath())
 
       let rss =
-        if @"tab".len == 0:
+        if not cfg.tabRssEnabled(@"tab"): 
+          ""
+        elif @"tab".len == 0:
           "/$1/rss" % @"name"
         elif @"tab" == "search":
           "/$1/search/rss?$2" % [@"name", genQueryUrl(query)]

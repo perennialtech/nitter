@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-nodriver = ">=0.48.0"
+zendriver = ">=0.15.0"
 pyotp = "*"
 curl-cffi = "*"
 

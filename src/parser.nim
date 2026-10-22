@@ -1,10 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import strutils, options, times, math, tables
+import strutils, options, times, math, tables, uri
 import packedjson, packedjson/deserialiser
 import types, parserutils, utils
 import experimental/parser/unifiedcard
 
-proc parseGraphTweet(js: JsonNode): Tweet
+proc parseGraphTweet*(js: JsonNode): Tweet
+
+proc parseVerifiedType(s: string; current: VerifiedType): VerifiedType =
+  try: parseEnum[VerifiedType](s)
+  except ValueError: current
+
+proc parseCommunityNote(js: JsonNode): string =
+  let subtitle = js{"subtitle"}
+  result = subtitle{"text"}.getStr
+  with entities, subtitle{"entities"}:
+    result = expandBirdwatchEntities(result, entities)
 
 proc parseUser(js: JsonNode; id=""): User =
   if js.isNull: return
@@ -29,17 +39,17 @@ proc parseUser(js: JsonNode; id=""): User =
     result.verifiedType = blue
 
   with verifiedType, js{"verified_type"}:
-    result.verifiedType = parseEnum[VerifiedType](verifiedType.getStr)
+    result.verifiedType = parseVerifiedType(verifiedType.getStr, result.verifiedType)
 
   result.expandUserEntities(js)
 
 proc parseGraphUser(js: JsonNode): User =
   var user = js{"user_result", "result"}
   if user.isNull:
-    user = ? js{"user_results", "result"}
+    user = js{"user_results", "result"}
 
   if user.isNull:
-    if js{"core"}.notNull and js{"legacy"}.notNull:
+    if js{"core"}.notNull:
       user = js
     else:
       return
@@ -51,15 +61,164 @@ proc parseGraphUser(js: JsonNode): User =
 
   # fallback to support UserMedia/recent GraphQL updates
   if result.username.len == 0:
+    result.id = user{"rest_id"}.getStr
     result.username = user{"core", "screen_name"}.getStr
     result.fullname = user{"core", "name"}.getStr
     result.userPic = user{"avatar", "image_url"}.getImageStr.replace("_normal", "")
 
-    if user{"is_blue_verified"}.getBool(false):
+    if user{"is_blue_verified"}.getBool(
+       user{"verification", "is_blue_verified"}.getBool(false)):
       result.verifiedType = blue
 
     with verifiedType, user{"verification", "verified_type"}:
-      result.verifiedType = parseEnum[VerifiedType](verifiedType.getStr)
+      result.verifiedType = parseVerifiedType(verifiedType.getStr, result.verifiedType)
+
+proc parseAboutAccount*(js: JsonNode): AccountInfo =
+  if js.isNull: return
+
+  let user = ? js{"data", "user_result_by_screen_name", "result"}
+
+  if user{"unavailable_reason"}.getStr == "Suspended":
+    result.suspended = true
+    return
+
+  result = AccountInfo(
+    username: user{"core", "screen_name"}.getStr,
+    fullname: user{"core", "name"}.getStr,
+    joinDate: user{"core", "created_at"}.getTime,
+    userPic: user{"avatar", "image_url"}.getImageStr.replace("_normal", ""),
+    affiliateLabel: user{"identity_profile_labels_highlighted_label", "label", "description"}.getStr,
+  )
+
+  if user{"is_blue_verified"}.getBool(false):
+    result.verifiedType = blue
+  with verifiedType, user{"verification", "verified_type"}:
+    result.verifiedType = parseVerifiedType(verifiedType.getStr, result.verifiedType)
+
+  with about, user{"about_profile"}:
+    result.basedIn = about{"account_based_in"}.getStr
+    result.source = about{"source"}.getStr
+    result.affiliateUsername = about{"affiliate_username"}.getStr
+
+    try: 
+      result.usernameChanges = about{"username_changes", "count"}.getStr("0").parseInt
+    except ValueError: 
+      discard
+
+    with lastChange, about{"username_changes", "last_changed_at_msec"}:
+      result.lastUsernameChange = lastChange.getTimeFromMsStr
+
+  with info, user{"verification_info"}:
+    result.isIdentityVerified = info{"is_identity_verified"}.getBool
+    with reason, info{"reason"}:
+      result.overrideVerifiedYear = reason{"override_verified_year"}.getInt
+      with since, reason{"verified_since_msec"}:
+        result.verifiedSince = since.getTimeFromMsStr
+
+proc parseBroadcastInfo*(js: JsonNode): Broadcast =
+  let bc = ? js{"data", "broadcast"}
+  result = Broadcast(
+    id: bc{"broadcast_id"}.getStr,
+    title: bc{"status"}.getStr,
+    state: bc{"state"}.getStr.toUpperAscii,
+    thumb: bc{"image_url"}.getStr,
+    mediaKey: bc{"media_key"}.getStr,
+    totalWatched: bc{"total_watched"}.getInt,
+    startTime: bc{"start_time"}.getTimeFromMs,
+    endTime: bc{"end_time"}.getTimeFromMs,
+    replayStart: bc{"edited_replay", "start_time"}.getInt,
+    availableForReplay: bc{"available_for_replay"}.getBool,
+    user: parseGraphUser(bc)
+  )
+
+proc parseSpaceParticipant(js: JsonNode): SpaceParticipant =
+  result = SpaceParticipant(
+    userId: js{"user_results", "rest_id"}.getStr,
+    username: js{"twitter_screen_name"}.getStr,
+    displayName: js{"display_name"}.getStr,
+    avatarUrl: js{"avatar_url"}.getStr,
+    isVerified: js{"is_verified"}.getBool or
+                js{"user_results", "result", "is_blue_verified"}.getBool
+  )
+
+proc parseAudioSpace*(js: JsonNode): AudioSpace =
+  let space = ? js{"data", "audioSpace"}
+  let meta = space{"metadata"}
+
+  result = AudioSpace(
+    id: meta{"rest_id"}.getStr,
+    title: meta{"title"}.getStr,
+    state: meta{"state"}.getStr.toUpperAscii,
+    mediaKey: meta{"media_key"}.getStr,
+    totalLiveListeners: meta{"total_live_listeners"}.getInt,
+    totalReplayWatched: meta{"total_replay_watched"}.getInt,
+    availableForReplay: meta{"is_space_available_for_replay"}.getBool
+  )
+
+  let startedAt = meta{"started_at"}.getInt(0)
+  if startedAt > 0:
+    result.startTime = fromUnix(startedAt div 1000).utc()
+
+  let endedAtStr = meta{"ended_at"}.getStr
+  if endedAtStr.len > 0:
+    try:
+      let endedAt = parseBiggestInt(endedAtStr)
+      if endedAt > 0:
+        result.endTime = fromUnix(endedAt div 1000).utc()
+    except ValueError:
+      discard
+
+  result.creator = parseGraphUser(meta{"creator_results", "result"})
+
+  for admin in space{"participants", "admins"}:
+    result.admins.add parseSpaceParticipant(admin)
+
+  for speaker in space{"participants", "speakers"}:
+    result.speakers.add parseSpaceParticipant(speaker)
+
+proc parseGraphCommunity*(js: JsonNode): Community =
+  if js.isNull: return
+  let c = ? js{"data", "communityResults", "result"}
+
+  result = Community(
+    id: c{"rest_id"}.getStr(c{"id_str"}.getStr),
+    name: c{"name"}.getStr,
+    description: c{"description"}.getStr,
+    memberCount: c{"member_count"}.getInt,
+    joinPolicy: c{"join_policy"}.getStr,
+    category: c{"primary_community_topic", "topic_name"}.getStr,
+    banner: c{"custom_banner_media", "media_info", "original_img_url"}.getImageStr,
+    creator: parseGraphUser(c{"creator_results", "result"}),
+  )
+
+  let createdMs = c{"created_at"}.getInt(0)
+  if createdMs > 0:
+    result.createdAt = fromUnix(createdMs div 1000).utc()
+
+  for rule in c{"rules"}:
+    result.rules.add CommunityRule(
+      name: rule{"name"}.getStr,
+      description: rule{"description"}.getStr
+    )
+
+  for item in c{"trending_hashtags_slice", "items"}:
+    let tag = item{"hashtag"}.getStr
+    if tag.len > 0:
+      result.hashtags.add tag
+
+proc parseListObject(js: JsonNode; owner: User): List =
+  List(
+    id: js{"id_str"}.getStr,
+    name: js{"name"}.getStr,
+    username: owner.username,
+    userId: owner.id,
+    description: js{"description"}.getStr,
+    members: js{"member_count"}.getInt,
+    banner: select(
+      js{"custom_banner_media", "media_info", "original_img_url"},
+      js{"default_banner_media", "media_info", "original_img_url"}
+    ).getImageStr
+  )
 
 proc parseGraphList*(js: JsonNode): List =
   if js.isNull: return
@@ -70,15 +229,17 @@ proc parseGraphList*(js: JsonNode): List =
   if list.isNull:
     return
 
-  result = List(
-    id: list{"id_str"}.getStr,
-    name: list{"name"}.getStr,
-    username: list{"user_results", "result", "legacy", "screen_name"}.getStr,
-    userId: list{"user_results", "result", "rest_id"}.getStr,
-    description: list{"description"}.getStr,
-    members: list{"member_count"}.getInt,
-    banner: list{"custom_banner_media", "media_info", "original_img_url"}.getImageStr
+  result = parseListObject(list, parseGraphUser(list))
+
+proc parseGraphSearchList(js: JsonNode): ListSearchResult =
+  let owner = parseGraphUser(js)
+  result = ListSearchResult(
+    list: parseListObject(js, owner),
+    owner: owner,
+    followersContext: js{"followers_context"}.getStr
   )
+  for url in js{"facepile_urls"}:
+    result.facepiles.add url.getStr
 
 proc parsePoll(js: JsonNode): Poll =
   let vals = js{"binding_values"}
@@ -134,66 +295,85 @@ proc parseVideo(js: JsonNode): Video =
 
   result.variants = parseVideoVariants(js{"video_info", "variants"})
 
+proc addMedia(media: var MediaEntities; photo: Photo) =
+  media.add Media(kind: photoMedia, photo: photo)
+
+proc addMedia(media: var MediaEntities; video: Video) =
+  media.add Media(kind: videoMedia, video: video)
+
+proc addMedia(media: var MediaEntities; gif: Gif) =
+  media.add Media(kind: gifMedia, gif: gif)
+
 proc parseLegacyMediaEntities(js: JsonNode; result: var Tweet) =
   with jsMedia, js{"extended_entities", "media"}:
     for m in jsMedia:
       case m.getTypeName:
       of "photo":
-        result.photos.add Photo(
+        result.media.addMedia(Photo(
           url: m{"media_url_https"}.getImageStr,
           altText: m{"ext_alt_text"}.getStr
-        )
+        ))
       of "video":
-        result.video = some(parseVideo(m))
+        result.media.addMedia(parseVideo(m))
         with user, m{"additional_media_info", "source_user"}:
           if user{"id"}.getInt > 0:
             result.attribution = some(parseUser(user))
           else:
             result.attribution = some(parseGraphUser(user))
+          # Set attribution link from expanded_url (strip /video/N suffix)
+          let expanded = m{"expanded_url"}.getStr
+          if expanded.len > 0:
+            result.attributionLink = expanded.parseUri.path.replace("/video/1", "")
       of "animated_gif":
-        result.gif = some Gif(
+        result.media.addMedia(Gif(
           url: m{"video_info", "variants"}[0]{"url"}.getImageStr,
-          thumb: m{"media_url_https"}.getImageStr
-        )
+          thumb: m{"media_url_https"}.getImageStr,
+          altText: m{"ext_alt_text"}.getStr
+        ))
       else: discard
-
-      with url, m{"url"}:
-        if result.text.endsWith(url.getStr):
-          result.text.removeSuffix(url.getStr)
-          result.text = result.text.strip()
 
 proc parseMediaEntities(js: JsonNode; result: var Tweet) =
   with mediaEntities, js{"media_entities"}:
+    var parsedMedia: MediaEntities
     for mediaEntity in mediaEntities:
       with mediaInfo, mediaEntity{"media_results", "result", "media_info"}:
         case mediaInfo.getTypeName
         of "ApiImage":
-          result.photos.add Photo(
+          parsedMedia.addMedia(Photo(
             url: mediaInfo{"original_img_url"}.getImageStr,
             altText: mediaInfo{"alt_text"}.getStr
-          )
+          ))
         of "ApiVideo":
           let status = mediaEntity{"media_results", "result", "media_availability_v2", "status"}
-          result.video = some Video(
+          parsedMedia.addMedia(Video(
             available: status.getStr == "Available",
             thumb: mediaInfo{"preview_image", "original_img_url"}.getImageStr,
+            title: mediaInfo{"alt_text"}.getStr,
             durationMs: mediaInfo{"duration_millis"}.getInt,
             variants: parseVideoVariants(mediaInfo{"variants"})
-          )
+          ))
+
+          # Parse source user for video attribution
+          with sourceUser, mediaEntity{"source_user_results", "result"}:
+            if result.attribution.isNone:
+              let expanded = mediaEntity{"expanded_url"}.getStr
+              if expanded.len > 0:
+                result.attributionLink = expanded.parseUri.path.replace("/video/1", "")
+              result.attribution = some(User(
+                id: sourceUser{"rest_id"}.getStr,
+                fullname: sourceUser{"core", "name"}.getStr,
+                userPic: sourceUser{"avatar", "image_url"}.getImageStr.replace("_normal", "")
+              ))
         of "ApiGif":
-          result.gif = some Gif(
+          parsedMedia.addMedia(Gif(
             url: mediaInfo{"variants"}[0]{"url"}.getImageStr,
-            thumb: mediaInfo{"preview_image", "original_img_url"}.getImageStr
-          )
+            thumb: mediaInfo{"preview_image", "original_img_url"}.getImageStr,
+            altText: mediaInfo{"alt_text"}.getStr
+          ))
         else: discard
 
-  # Remove media URLs from text
-  with mediaList, js{"legacy", "entities", "media"}:
-    for url in mediaList:
-      let expandedUrl = url.getExpandedUrl
-      if result.text.endsWith(expandedUrl):
-        result.text.removeSuffix(expandedUrl)
-        result.text = result.text.strip()
+    if mediaEntities.len > 0 and parsedMedia.len == mediaEntities.len:
+      result.media = parsedMedia
 
 proc parsePromoVideo(js: JsonNode): Video =
   result = Video(
@@ -216,14 +396,23 @@ proc parsePromoVideo(js: JsonNode): Video =
   result.variants.add variant
 
 proc parseBroadcast(js: JsonNode): Card =
-  let image = js{"broadcast_thumbnail_large"}.getImageVal
+  let
+    image = js{"broadcast_thumbnail_large"}.getImageVal
+    broadcastUrl = js{"broadcast_url"}.getStrVal
+    broadcastId = broadcastUrl.rsplit('/', maxsplit=1)[^1]
+    streamUrl = "/i/broadcasts/" & broadcastId & "/stream"
   result = Card(
     kind: broadcast,
-    url: js{"broadcast_url"}.getStrVal,
+    url: "/i/broadcasts/" & broadcastId,
     title: js{"broadcaster_display_name"}.getStrVal,
     text: js{"broadcast_title"}.getStrVal,
     image: image,
-    video: some Video(thumb: image)
+    video: some Video(
+      thumb: image,
+      available: true,
+      playbackType: m3u8,
+      variants: @[VideoVariant(contentType: m3u8, url: streamUrl)]
+    )
   )
 
 proc parseCard(js: JsonNode; urls: JsonNode): Card =
@@ -262,7 +451,13 @@ proc parseCard(js: JsonNode; urls: JsonNode): Card =
     result.url = vals{"player_url"}.getStrVal
     if "youtube.com" in result.url:
       result.url = result.url.replace("/embed/", "/watch?v=")
-  of audiospace, unknown:
+  of audiospace:
+    let spaceId = vals{"id"}.getStrVal
+    if spaceId.len > 0:
+      result.url = "/i/spaces/" & spaceId
+      result.title = "Twitter Space"
+      result.text = "Click to view Space"
+  of unknown:
     result.title = "This card type is not supported."
   else: discard
 
@@ -283,8 +478,9 @@ proc parseCard(js: JsonNode; urls: JsonNode): Card =
      result.url.len == 0 or result.url.startsWith("card://"):
     result.url = getPicUrl(result.image)
 
-proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
-  if js.isNull: return
+proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull();
+                replyId: int64 = 0; hasArticle = false): Tweet =
+  if js.isNull: return Tweet()
 
   let time =
     if js{"created_at"}.notNull: js{"created_at"}.getTime
@@ -307,6 +503,9 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
     )
   )
 
+  if result.replyId == 0:
+    result.replyId = replyId
+
   # fix for pinned threads
   if result.hasThread and result.threadId == 0:
     result.threadId = js{"self_thread", "id_str"}.getId
@@ -324,13 +523,13 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
   # graphql
   with rt, js{"retweeted_status_result", "result"}:
     # needed due to weird edgecase where the actual tweet data isn't included
-    if "legacy" in rt:
+    if "legacy" in rt or "rest_id" in rt:
       result.retweet = some parseGraphTweet(rt)
       return
 
   with reposts, js{"repostedStatusResults"}:
     with rt, reposts{"result"}:
-      if "legacy" in rt:
+      if "legacy" in rt or "rest_id" in rt:
         result.retweet = some parseGraphTweet(rt)
         return
 
@@ -338,17 +537,17 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
     let name = jsCard{"name"}.getStr
     if "poll" in name:
       if "image" in name:
-        result.photos.add Photo(
+        result.media.addMedia(Photo(
           url: jsCard{"binding_values", "image_large"}.getImageVal
-        )
+        ))
 
       result.poll = some parsePoll(jsCard)
     elif name == "amplify":
-      result.video = some parsePromoVideo(jsCard{"binding_values"})
-    else:
+      result.media.addMedia(parsePromoVideo(jsCard{"binding_values"}))
+    elif name.len > 0 and jsCard{"binding_values"}.notNull:
       result.card = some parseCard(jsCard, js{"entities", "urls"})
 
-  result.expandTweetEntities(js)
+  result.expandTweetEntities(js, hasArticle)
   parseLegacyMediaEntities(js, result)
 
   with jsWithheld, js{"withheld_in_countries"}:
@@ -365,7 +564,7 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
       result.text.removeSuffix(" Learn more.")
       result.available = false
 
-proc parseGraphTweet(js: JsonNode): Tweet =
+proc parseGraphTweet*(js: JsonNode): Tweet =
   if js.kind == JNull:
     return Tweet()
 
@@ -383,7 +582,7 @@ proc parseGraphTweet(js: JsonNode): Tweet =
   else:
     discard
 
-  if not js.hasKey("legacy"):
+  if "legacy" notin js and "rest_id" notin js:
     return Tweet()
 
   var jsCard = select(js{"card"}, js{"tweet_card"}, js{"legacy", "tweet_card"})
@@ -402,12 +601,80 @@ proc parseGraphTweet(js: JsonNode): Tweet =
           "binding_values": %bindingObj
         }
 
-  result = parseTweet(js{"legacy"}, jsCard)
-  result.id = js{"rest_id"}.getId
+  var replyId: int64 = 0
+  with restId, js{"reply_to_results", "rest_id"}:
+    replyId = restId.getId
+
+  let hasArticle = js{"article", "article_results", "result", "title"}.getStr.len > 0
+
+  if "details" in js:
+    result = Tweet(
+      id: js{"rest_id"}.getId,
+      available: true,
+      text: js{"details", "full_text"}.getStr,
+      time: js{"details", "created_at_ms"}.getTimeFromMs,
+      replyId: js{"reply_to_results", "rest_id"}.getId,
+      isAd: js{"content_disclosure", "advertising_disclosure", "is_paid_promotion"}.getBool,
+      isAI: js{"content_disclosure", "ai_generated_disclosure", "has_ai_generated_media"}.getBool,
+      stats: TweetStats(
+        replies: js{"counts", "reply_count"}.getInt,
+        retweets: js{"counts", "retweet_count"}.getInt,
+        likes: js{"counts", "favorite_count"}.getInt,
+      )
+    )
+
+    if jsCard.kind != JNull:
+      let name = jsCard{"name"}.getStr
+      if "poll" in name:
+        if "image" in name:
+          result.media.addMedia(Photo(
+            url: jsCard{"binding_values", "image_large"}.getImageVal
+          ))
+
+        result.poll = some parsePoll(jsCard)
+      elif name == "amplify":
+        result.media.addMedia(parsePromoVideo(jsCard{"binding_values"}))
+      elif name.len > 0 and jsCard{"binding_values"}.notNull:
+        result.card = some parseCard(jsCard, js{"url_entities"})
+
+    parseMediaEntities(js, result)
+    if result.attribution.isNone:
+      parseLegacyMediaEntities(js{"legacy"}, result)
+
+    result.expandTweetEntitiesV2(js, hasArticle)
+
+    # Strip video source URL from text (for videos from other tweets)
+    with mediaEntities, js{"media_entities"}:
+      for m in mediaEntities:
+        if "source_status_id_str" in m:
+          let mediaUrl = m{"url"}.getStr
+          if mediaUrl.len > 0:
+            let idx = result.text.rfind(mediaUrl)
+            if idx >= 0:
+              result.text = result.text[0 ..< idx].strip()
+            break
+  else:
+    result = parseTweet(js{"legacy"}, jsCard, replyId, hasArticle)
+    result.id = js{"rest_id"}.getId
+
+  with artNode, js{"article", "article_results", "result"}:
+    let artTitle = artNode{"title"}.getStr
+    if artTitle.len > 0:
+      result.articlePreview = some ArticlePreview(
+        title: artTitle,
+        previewText: artNode{"preview_text"}.getStr,
+        coverImage: select(
+          artNode{"cover_media_results", "result", "media_info", "original_img_url"},
+          artNode{"cover_media", "media_info", "original_img_url"}
+        ).getImageStr,
+        tweetId: result.id
+      )
+
   result.user = parseGraphUser(js{"core"})
 
-  if result.replyId == 0:
-    result.replyId = js{"reply_to_results", "rest_id"}.getId
+  if result.reply.len == 0:
+    with replyTo, js{"reply_to_user_results", "result", "core", "screen_name"}:
+      result.reply = @[replyTo.getStr]
 
   with count, js{"views", "count"}:
     result.stats.views = count.getStr("0").parseInt
@@ -417,21 +684,58 @@ proc parseGraphTweet(js: JsonNode): Tweet =
 
   parseMediaEntities(js, result)
 
-  if result.quote.isSome:
-    result.quote = some(parseGraphTweet(js{"quoted_status_result", "result"}))
+  # Hide card if it's redundant with attribution (same video shown via embed)
+  if result.attribution.isSome and result.card.isSome:
+    let cardUri = get(result.card).url.parseUri
+    if cardUri.isTwitterUrl:
+      let cardPath = cardUri.path.replace("/video/1", "")
+      if cardPath.len > 0 and cardPath == result.attributionLink:
+        get(result.card).kind = hidden
 
-  with quoted, js{"quotedPostResults", "result"}:
+  # Handle retweets - check both legacy and top-level paths
+  with reposts, js{"legacy", "repostedStatusResults"}:
+    with rt, reposts{"result"}:
+      if "legacy" in rt or "rest_id" in rt:
+        result.retweet = some parseGraphTweet(rt)
+
+  with quoted, js{"quoted_status_result", "result"}:
     result.quote = some(parseGraphTweet(quoted))
 
+  with quoted, js{"quotedPostResults"}:
+    if "result" in quoted:
+      result.quote = some(parseGraphTweet(quoted{"result"}))
+    else:
+      result.quote = some Tweet(id: js{"legacy", "quoted_status_id_str"}.getId)
+
+  with ids, js{"edit_control", "edit_control_initial", "edit_tweet_ids"}:
+    for id in ids:
+      result.history.add parseBiggestInt(id.getStr)
+
+  with birdwatch, js{"birdwatch_pivot"}:
+    result.note = parseCommunityNote(birdwatch)
+
+proc getConvSection(js: JsonNode): string =
+  let details = select(
+    js{"item", "client_event_info", "details"},
+    js{"item", "clientEventInfo", "details"}
+  )
+  select(
+    details{"conversation_details", "conversation_section"},
+    details{"conversationDetails", "conversationSection"}
+  ).getStr
+
 proc parseGraphThread(js: JsonNode): tuple[thread: Chain; self: bool] =
+  var checkedSection = false
   for t in ? js{"content", "items"}:
     let entryId = t.getEntryId
-    if "cursor-showmore" in entryId:
-      let cursor = t{"item", "content", "value"}
-      result.thread.cursor = cursor.getStr
-      result.thread.hasMore = true
-    elif "tweet" in entryId and "promoted" notin entryId:
-      with tweet, t.getTweetResult("item"):
+    if "tweet-" in entryId and "promoted" notin entryId:
+      if not checkedSection:
+        checkedSection = true
+        if getConvSection(t) == "RelatedTweet":
+          result.thread.related = true
+
+      let tweet = t.getTweetResult("item")
+      if tweet.notNull:
         result.thread.content.add parseGraphTweet(tweet)
 
         let tweetDisplayType = select(
@@ -440,10 +744,30 @@ proc parseGraphThread(js: JsonNode): tuple[thread: Chain; self: bool] =
         )
         if tweetDisplayType.getStr == "SelfThread":
           result.self = true
+      else:
+        result.thread.content.add Tweet(id: entryId.getId)
+    elif "cursor-showmore" in entryId:
+      let cursor = t{"item", "content", "value"}
+      result.thread.cursor = cursor.getStr
+      result.thread.hasMore = true
 
 proc parseGraphTweetResult*(js: JsonNode): Tweet =
   with tweet, js{"data", "tweet_result", "result"}:
     result = parseGraphTweet(tweet)
+
+proc parseTweetByRestId*(js: JsonNode): Tweet =
+  with tweet, js{"data", "tweetResult", "result"}:
+    result = parseGraphTweet(tweet)
+
+proc parseGraphTweetResults*(js: JsonNode): seq[Tweet] =
+  let results = js{"data", "tweetResult"}
+  if results.kind != JArray: return
+  for item in results:
+    let tweet = item{"result"}
+    if tweet.isNull: continue
+    let t = parseGraphTweet(tweet)
+    if t != nil:
+      result.add t
 
 proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
   result = Conversation(replies: Result[Chain](beginning: true))
@@ -460,7 +784,7 @@ proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
     if i.getTypeName == "TimelineAddEntries":
       for e in i{"entries"}:
         let entryId = e.getEntryId
-        if entryId.startsWith("tweet"):
+        if entryId.startsWith("tweet-"):
           let tweetResult = getTweetResult(e)
           if tweetResult.notNull:
             let tweet = parseGraphTweet(tweetResult)
@@ -468,11 +792,14 @@ proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
             if not tweet.available:
               tweet.id = entryId.getId
 
-            if $tweet.id == tweetId:
+            if entryId.endsWith(tweetId):
               result.tweet = tweet
             else:
               result.before.content.add tweet
-        elif entryId.startsWith("conversationthread"):
+          elif not entryId.endsWith(tweetId):
+            result.before.content.add Tweet(id: entryId.getId)
+        elif entryId.startsWith("conversationthread") or
+             entryId.startsWith("tweetdetailrelatedtweets"):
           let (thread, self) = parseGraphThread(e)
           if self:
             result.after = thread
@@ -499,20 +826,54 @@ proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
           )
           result.replies.bottom = cursorValue.getStr
 
+proc parseGraphEditHistory*(js: JsonNode; tweetId: string): EditHistory =
+  let instructions = ? js{
+    "data", "tweet_result_by_rest_id", "result", 
+    "edit_history_timeline", "timeline", "instructions"
+  }
+  if instructions.len == 0:
+    return
+
+  for i in instructions:
+    if i.getTypeName == "TimelineAddEntries":
+      for e in i{"entries"}:
+        let entryId = e.getEntryId
+        if entryId == "latestTweet":
+          with item, e{"content", "items"}[0]:
+            let tweetResult = item.getTweetResult("item")
+            if tweetResult.notNull:
+              result.latest = parseGraphTweet(tweetResult)
+        elif entryId == "staleTweets":
+          for item in e{"content", "items"}:
+            let tweetResult = item.getTweetResult("item")
+            if tweetResult.notNull:
+              result.history.add parseGraphTweet(tweetResult)
+
+iterator extractTweetsFromModuleItems(items: JsonNode): Tweet =
+  for item in items:
+    with tweetResult, item.getTweetResult("item"):
+      let tweet = parseGraphTweet(tweetResult)
+      if not tweet.available:
+        tweet.id = item.getEntryId.getId
+      yield tweet
+
+iterator extractListsFromItems(items: JsonNode): ListSearchResult =
+  for item in items:
+    with listJs, item{"item", "itemContent", "list"}:
+      let r = parseGraphSearchList(listJs)
+      if r.list.id.len > 0:
+        yield r
+
 proc extractTweetsFromEntry*(e: JsonNode): seq[Tweet] =
   with tweetResult, getTweetResult(e):
-    var tweet = parseGraphTweet(tweetResult)
+    let tweet = parseGraphTweet(tweetResult)
     if not tweet.available:
       tweet.id = e.getEntryId.getId
     result.add tweet
     return
 
-  for item in e{"content", "items"}:
-    with tweetResult, item.getTweetResult("item"):
-      var tweet = parseGraphTweet(tweetResult)
-      if not tweet.available:
-        tweet.id = item.getEntryId.getId
-      result.add tweet
+  for tweet in extractTweetsFromModuleItems(e{"content", "items"}):
+    result.add tweet
 
 proc parseGraphTimeline*(js: JsonNode; after=""): Profile =
   result = Profile(tweets: Timeline(beginning: after.len == 0))
@@ -527,12 +888,8 @@ proc parseGraphTimeline*(js: JsonNode; after=""): Profile =
 
   for i in instructions:
     if i{"moduleItems"}.notNull:
-      for item in i{"moduleItems"}:
-        with tweetResult, item.getTweetResult("item"):
-          let tweet = parseGraphTweet(tweetResult)
-          if not tweet.available:
-            tweet.id = item.getEntryId.getId
-          result.tweets.content.add tweet
+      for tweet in extractTweetsFromModuleItems(i{"moduleItems"}):
+        result.tweets.content.add tweet
       continue
 
     if i{"entries"}.notNull:
@@ -567,18 +924,13 @@ proc parseGraphPhotoRail*(js: JsonNode): PhotoRail =
 
   for i in instructions:
     if i{"moduleItems"}.notNull:
-      for item in i{"moduleItems"}:
-        with tweetResult, item.getTweetResult("item"):
-          let t = parseGraphTweet(tweetResult)
-          if not t.available:
-            t.id = item.getEntryId.getId
+      for t in extractTweetsFromModuleItems(i{"moduleItems"}):
+        let photo = extractGalleryPhoto(t)
+        if photo.url.len > 0:
+          result.add photo
 
-          let photo = extractGalleryPhoto(t)
-          if photo.url.len > 0:
-            result.add photo
-
-          if result.len == 16:
-            return
+        if result.len == 16:
+          return
       continue
 
     if i.getTypeName != "TimelineAddEntries":
@@ -595,7 +947,7 @@ proc parseGraphPhotoRail*(js: JsonNode): PhotoRail =
           if result.len == 16:
             return
 
-proc parseGraphSearch*[T: User | Tweets](js: JsonNode; after=""): Result[T] =
+proc parseGraphSearch*[T: User | Tweets | ListSearchResult](js: JsonNode; after=""): Result[T] =
   result = Result[T](beginning: after.len == 0)
 
   let instructions = select(
@@ -611,19 +963,73 @@ proc parseGraphSearch*[T: User | Tweets](js: JsonNode; after=""): Result[T] =
       for e in instruction{"entries"}:
         let entryId = e.getEntryId
         when T is Tweets:
-          if entryId.startsWith("tweet"):
-            with tweetRes, getTweetResult(e):
-              let tweet = parseGraphTweet(tweetRes)
-              if not tweet.available:
-                tweet.id = entryId.getId
+          if entryId.startsWith("tweet") or entryId.startsWith("search-grid"):
+            for tweet in extractTweetsFromEntry(e):
               result.content.add tweet
         elif T is User:
           if entryId.startsWith("user"):
             with userRes, e{"content", "itemContent"}:
               result.content.add parseGraphUser(userRes)
+        elif T is ListSearchResult:
+          if entryId.startsWith("list-search"):
+            for list in extractListsFromItems(e{"content", "items"}):
+              result.content.add list
 
         if entryId.startsWith("cursor-bottom"):
           result.bottom = e{"content", "value"}.getStr
+    elif typ == "TimelineAddToModule":
+      when T is Tweets:
+        for tweet in extractTweetsFromModuleItems(instruction{"moduleItems"}):
+          result.content.add tweet
+      elif T is ListSearchResult:
+        for list in extractListsFromItems(instruction{"moduleItems"}):
+          result.content.add list
     elif typ == "TimelineReplaceEntry":
       if instruction{"entry_id_to_replace"}.getStr.startsWith("cursor-bottom"):
         result.bottom = instruction{"entry", "content", "value"}.getStr
+
+proc parseGraphCommunityTimeline*(js: JsonNode; after=""): Timeline =
+  result = Timeline(beginning: after.len == 0)
+
+  let communityResult = js{"data", "communityResults", "result"}
+  let instructions = ? select(
+    communityResult{"ranked_community_timeline", "timeline", "instructions"},
+    communityResult{"community_media_timeline", "timeline", "instructions"},
+    communityResult{"community_filtered_timeline", "timeline", "instructions"}
+  )
+  if instructions.len == 0:
+    return
+
+  for i in instructions:
+    if i{"entries"}.notNull:
+      for e in i{"entries"}:
+        let entryId = e.getEntryId
+        if entryId.startsWith("tweet") or entryId.startsWith("profile-grid") or
+           entryId.startsWith("communities-grid"):
+          for tweet in extractTweetsFromEntry(e):
+            result.content.add tweet
+        elif entryId.startsWith("cursor-bottom"):
+          result.bottom = e{"content", "value"}.getStr
+
+    if after.len == 0 and i.getTypeName == "TimelinePinEntry":
+      var tweets = extractTweetsFromEntry(i{"entry"})
+      for tweet in tweets.mitems:
+        tweet.pinned = true
+      if tweets.len > 0:
+        result.content.insert(tweets, 0)
+
+proc parseGraphCommunityMembers*(js: JsonNode; after=""): Result[User] =
+  result = Result[User](beginning: after.len == 0)
+
+  let r = js{"data", "communityResults", "result"}
+  let slice = if not r{"members_slice"}.isNull: r{"members_slice"}
+              else: r{"moderators_slice"}
+  for item in slice{"items_results"}:
+    let user = parseGraphUser(item{"result"})
+    if user.username.len > 0:
+      result.content.add user
+
+  let cursor = slice{"slice_info", "next_cursor"}.getStr
+  if cursor.len > 0:
+    result.bottom = cursor
+

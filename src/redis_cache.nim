@@ -144,9 +144,10 @@ proc getCachedUsername*(userId: string): Future[string] {.async.} =
   else:
     let user = await getGraphUserById(userId)
     result = user.username
-    await setEx(key, baseCacheTime, result)
-    if result.len > 0 and user.id.len > 0:
-      await all(cacheUserId(result, user.id), cache(user))
+    if result.len > 0:
+      await setEx(key, baseCacheTime, result)
+      if user.id.len > 0:
+        await all(cacheUserId(result, user.id), cache(user))
 
 # proc getCachedTweet*(id: int64): Future[Tweet] {.async.} =
 #   if id == 0: return
@@ -158,6 +159,48 @@ proc getCachedUsername*(userId: string): Future[string] {.async.} =
 #     if not result.isNil:
 #       await cache(result)
 
+proc cache*(data: Broadcast) {.async.} =
+  if data.id.len == 0: return
+  await setEx("bc:" & data.id, baseCacheTime, compress(toFlatty(data)))
+
+proc getCachedBroadcast*(id: string): Future[Broadcast] {.async.} =
+  if id.len == 0: return
+  let cached = await get("bc:" & id)
+  if cached != redisNil:
+    cached.deserialize(Broadcast)
+  else:
+    result = await getBroadcastInfo(id)
+    await cache(result)
+  result.m3u8Url = await fetchBroadcastStream(result.mediaKey)
+
+proc cache*(data: AudioSpace) {.async.} =
+  if data.id.len == 0: return
+  let ttl = if data.state == "RUNNING": baseCacheTime div 6 else: baseCacheTime
+  await setEx("sp:" & data.id, ttl, compress(toFlatty(data)))
+
+proc getCachedAudioSpace*(id: string): Future[AudioSpace] {.async.} =
+  if id.len == 0: return
+  let cached = await get("sp:" & id)
+  if cached != redisNil:
+    cached.deserialize(AudioSpace)
+  else:
+    result = await getAudioSpace(id)
+    await cache(result)
+  result.m3u8Url = await fetchBroadcastStream(result.mediaKey)
+
+proc cache*(data: AccountInfo; name: string) {.async.} =
+  await setEx("ai:" & toLower(name), baseCacheTime * 24, compress(toFlatty(data)))
+
+proc getCachedAccountInfo*(username: string; fetch=true): Future[AccountInfo] {.async.} =
+  if username.len == 0: return
+  let name = toLower(username)
+  let cached = await get("ai:" & name)
+  if cached != redisNil:
+    cached.deserialize(AccountInfo)
+  elif fetch:
+    result = await getAboutAccount(username)
+    await cache(result, name)
+
 proc getCachedPhotoRail*(id: string): Future[PhotoRail] {.async.} =
   if id.len == 0: return
   let rail = await get("pr2:" & toLower(id))
@@ -166,6 +209,29 @@ proc getCachedPhotoRail*(id: string): Future[PhotoRail] {.async.} =
   else:
     result = await getPhotoRail(id)
     await cache(result, id)
+
+proc cache*(data: Community) {.async.} =
+  if data.id.len == 0: return
+  await setEx("cm:" & data.id, listCacheTime, compress(toFlatty(data)))
+
+proc getCachedCommunity*(id: string): Future[Community] {.async.} =
+  if id.len == 0: return
+  let cached = await get("cm:" & id)
+  if cached != redisNil:
+    cached.deserialize(Community)
+  else:
+    result = await getGraphCommunity(id)
+    await cache(result)
+
+proc getCachedCommunityModerators*(id: string): Future[seq[User]] {.async.} =
+  if id.len == 0: return
+  let cached = await get("cmm:" & id)
+  if cached != redisNil:
+    cached.deserialize(seq[User])
+  else:
+    let mods = await getGraphCommunityModerators(id)
+    result = mods.content
+    await setEx("cmm:" & id, listCacheTime, compress(toFlatty(result)))
 
 proc getCachedList*(username=""; slug=""; id=""): Future[List] {.async.} =
   let list = if id.len == 0: redisNil

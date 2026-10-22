@@ -2,7 +2,7 @@
 import strutils, strformat
 import karax/[karaxdsl, vdom, vstyles]
 
-import renderutils, search
+import renderutils, search, timeline
 import ".."/[types, utils, formatters]
 
 proc renderStat(num: int; class: string; text=""): VNode =
@@ -12,7 +12,14 @@ proc renderStat(num: int; class: string; text=""): VNode =
     span(class="profile-stat-num"):
       text insertSep($num, ',')
 
-proc renderUserCard*(user: User; prefs: Prefs): VNode =
+proc renderStatLink(num: int; class, href: string): VNode =
+  buildHtml(li(class=class)):
+    a(href=href):
+      span(class="profile-stat-header"): text capitalizeAscii(class)
+      span(class="profile-stat-num"):
+        text insertSep($num, ',')
+
+proc renderUserCard*(user: User; prefs: Prefs; info: AccountInfo): VNode =
   buildHtml(tdiv(class="profile-card")):
     tdiv(class="profile-card-info"):
       let
@@ -46,6 +53,11 @@ proc renderUserCard*(user: User; prefs: Prefs): VNode =
           else:
             span: text place
 
+      if info.basedIn.len > 0:
+        tdiv(class="profile-location"):
+          span: icon "location"
+          span: text "Based in " & info.basedIn
+
       if user.website.len > 0:
         tdiv(class="profile-website"):
           span:
@@ -54,14 +66,14 @@ proc renderUserCard*(user: User; prefs: Prefs): VNode =
             a(href=url): text url.shortLink
 
       tdiv(class="profile-joindate"):
-        span(title=getJoinDateFull(user)):
+        a(href=(&"/{user.username}/about"), title=getJoinDateFull(user)):
           icon "calendar", getJoinDate(user)
 
       tdiv(class="profile-card-extra-links"):
         ul(class="profile-statlist"):
           renderStat(user.tweets, "posts", text="Tweets")
-          renderStat(user.following, "following")
-          renderStat(user.followers, "followers")
+          renderStatLink(user.following, "following", &"/{user.username}/following")
+          renderStatLink(user.followers, "followers", &"/{user.username}/followers")
           renderStat(user.likes, "likes")
 
 proc renderPhotoRail(profile: Profile): VNode =
@@ -94,7 +106,7 @@ proc renderBanner(banner: string): VNode =
     else:
       a(href=getPicUrl(banner), target="_blank"): genImg(banner)
 
-proc renderProtected(username: string): VNode =
+proc renderProtected*(username: string): VNode =
   buildHtml(tdiv(class="timeline-container")):
     tdiv(class="timeline-header timeline-protected"):
       h2: text "This account's tweets are protected."
@@ -102,19 +114,52 @@ proc renderProtected(username: string): VNode =
 
 proc renderProfile*(profile: var Profile; prefs: Prefs; path: string): VNode =
   profile.tweets.query.fromUser = @[profile.user.username]
+  let
+    isGalleryView = profile.tweets.query.kind == QueryKind.media and
+      profile.tweets.query.view == "gallery"
+    viewClass = if isGalleryView: " media-only" else: ""
 
-  buildHtml(tdiv(class="profile-tabs")):
-    if not prefs.hideBanner:
+  buildHtml(tdiv(class=("profile-tabs" & viewClass))):
+    if not isGalleryView and not prefs.hideBanner:
       tdiv(class="profile-banner"):
         renderBanner(profile.user.banner)
 
-    let sticky = if prefs.stickyProfile: " sticky" else: ""
-    tdiv(class=("profile-tab" & sticky)):
-      renderUserCard(profile.user, prefs)
-      if profile.photoRail.len > 0:
-        renderPhotoRail(profile)
+    if not isGalleryView:
+      let sticky = if prefs.stickyProfile: " sticky" else: ""
+      tdiv(class=("profile-tab" & sticky)):
+        renderUserCard(profile.user, prefs, profile.accountInfo)
+        if profile.photoRail.len > 0:
+          renderPhotoRail(profile)
 
     if profile.user.protected:
       renderProtected(profile.user.username)
     else:
       renderTweetSearch(profile.tweets, prefs, path, profile.pinned)
+
+proc renderFollowTabs(user: User; activeTab: string): VNode =
+  buildHtml(ul(class="tab")):
+    for tab in ["Following", "Followers"]:
+      li(class=(if activeTab == tab: "tab-item active" else: "tab-item")):
+        a(href=(&"/{user.username}/{tab.toLowerAscii()}")): text tab
+
+proc renderUserList*(user: User; results: Result[User]; prefs: Prefs;
+                     path, activeTab: string): VNode =
+  # Check if we've loaded all results (for page 1)
+  var displayResults = results
+  if results.beginning:
+    let expectedCount = if activeTab == "Followers": user.followers else: user.following
+    if results.content.len >= expectedCount:
+      displayResults.bottom = ""
+
+  buildHtml(tdiv(class="profile-tabs")):
+    if not prefs.hideBanner:
+      tdiv(class="profile-banner"):
+        renderBanner(user.banner)
+
+    let sticky = if prefs.stickyProfile: " sticky" else: ""
+    tdiv(class=("profile-tab" & sticky)):
+      renderUserCard(user, prefs, AccountInfo())
+
+    tdiv(class="timeline-container"):
+      renderFollowTabs(user, activeTab)
+      renderTimelineUsers(displayResults, prefs, path)

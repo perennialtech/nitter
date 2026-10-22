@@ -78,6 +78,12 @@ genPrefs:
     hideReplies(checkbox, false):
       "Hide tweet replies"
 
+    hideRelated(checkbox, true):
+      "Hide related tweets under replies"
+
+    hideCommunityNotes(checkbox, false):
+      "Hide community notes"
+
     squareAvatars(checkbox, false):
       "Square profile pictures"
 
@@ -96,6 +102,17 @@ genPrefs:
 
     autoplayGifs(checkbox, true):
       "Autoplay gifs"
+
+    compactGallery(checkbox, false):
+      "Compact media gallery (no profile info or text)"
+
+    gallerySize(select, "Medium"):
+      "Gallery column size"
+      options: @["Small", "Medium", "Large"]
+
+    mediaView(select, "Timeline"):
+      "Default media view"
+      options: @["Timeline", "Grid", "Gallery"]
 
   "Link replacements (blank to disable)":
     replaceTwitter(input, ""):

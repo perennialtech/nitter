@@ -21,16 +21,18 @@ proc createStatusRouter*(cfg: Config) =
       if id.len > 19 or id.any(c => not c.isDigit):
         resp Http404, showError("Invalid tweet ID", cfg)
 
-      let prefs = requestPrefs()
+      let
+        prefs = requestPrefs()
+        sort = parseEnum[RankingMode](@"sort".toLowerAscii.capitalizeAscii, Relevance)
 
       # used for the infinite scroll feature
       if @"scroll".len > 0:
-        let replies = await getReplies(id, getCursor())
+        let replies = await getReplies(id, getCursor(), sort)
         if replies.content.len == 0:
-          resp Http404, ""
-        resp $renderReplies(replies, prefs, getPath())
+          resp Http204
+        resp $renderReplies(replies, prefs, getPath(), sort=sort)
 
-      let conv = await getTweet(id, getCursor())
+      let conv = await getTweet(id, getCursor(), sort)
 
       if conv == nil or conv.tweet == nil or conv.tweet.id == 0:
         var error = "Tweet not found"
@@ -44,15 +46,19 @@ proc createStatusRouter*(cfg: Config) =
         desc = conv.tweet.text
 
       var
-        images = conv.tweet.photos.mapIt(it.url)
+        images = conv.tweet.getPhotos.mapIt(it.url)
         video = ""
 
-      if conv.tweet.video.isSome():
-        images = @[get(conv.tweet.video).thumb]
+      let
+        firstMediaKind = if conv.tweet.media.len > 0: conv.tweet.media[0].kind
+                         else: photoMedia
+
+      if firstMediaKind == videoMedia:
+        images = @[conv.tweet.media[0].getThumb]
         video = getVideoEmbed(cfg, conv.tweet.id)
-      elif conv.tweet.gif.isSome():
-        images = @[get(conv.tweet.gif).thumb]
-        video = getPicUrl(get(conv.tweet.gif).url)
+      elif firstMediaKind == gifMedia:
+        images = @[conv.tweet.media[0].getThumb]
+        video = getPicUrl(conv.tweet.media[0].gif.url)
       elif conv.tweet.card.isSome():
         let card = conv.tweet.card.get()
         if card.image.len > 0:
@@ -60,13 +66,37 @@ proc createStatusRouter*(cfg: Config) =
         elif card.video.isSome():
           images = @[card.video.get().thumb]
 
-      let html = renderConversation(conv, prefs, getPath() & "#m")
+      let
+        tweetUrl = getUrlPrefix(cfg) & "/" & conv.tweet.user.username & "/status/" & $conv.tweet.id
+        oembedUrl = getUrlPrefix(cfg) & "/api/oembed?url=" & encodeUrl(tweetUrl)
+
+      let html = renderConversation(conv, prefs, getPath() & "#m", sort)
       resp renderMain(html, request, cfg, prefs, title, desc, ogTitle,
-                      images=images, video=video)
+                      images=images, video=video, oembed=oembedUrl)
+
+    get "/@name/status/@id/history/?":
+      cond '.' notin @"name"
+      let id = @"id"
+
+      if id.len > 19 or id.any(c => not c.isDigit):
+        resp Http404, showError("Invalid tweet ID", cfg)
+
+      let edits = await getGraphEditHistory(id)
+      if edits.latest == nil or edits.latest.id == 0:
+        resp Http404, showError("Tweet history not found", cfg)
+
+      let
+        prefs = requestPrefs()
+        title = "History for " & pageTitle(edits.latest)
+        ogTitle = "Edit History for " & pageTitle(edits.latest.user)
+        desc = edits.latest.text
+
+      let html = renderEditHistory(edits, prefs, getPath())
+      resp renderMain(html, request, cfg, prefs, title, desc, ogTitle)
 
     get "/@name/@s/@id/@m/?@i?":
       cond @"s" in ["status", "statuses"]
-      cond @"m" in ["video", "photo", "history"]
+      cond @"m" in ["video", "photo"]
       redirect("/$1/status/$2" % [@"name", @"id"])
 
     get "/@name/statuses/@id/?":

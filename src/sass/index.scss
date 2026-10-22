@@ -7,6 +7,9 @@
 @import "inputs";
 @import "timeline";
 @import "search";
+@import "broadcast";
+@import "space";
+@import "_article";
 
 body {
   // colors
@@ -60,6 +63,10 @@ body {
   outline: unset;
   margin: 0;
   text-decoration: none;
+}
+
+img {
+  dynamic-range-limit: standard;
 }
 
 h1 {
@@ -154,9 +161,10 @@ body.fixed-nav .container {
 
 .verified-icon {
   display: inline-block;
+  position: relative;
   width: 14px;
   height: 14px;
-  margin-left: 2px;
+  margin-bottom: 2px;
 
   .verified-icon-circle {
     position: absolute;

@@ -2,15 +2,15 @@
 import asyncdispatch, strformat, logging
 from net import Port
 from htmlgen import a
-from os import getEnv
+from os import getEnv, normalizedPath
 
 import jester
 
 import types, config, prefs, formatters, redis_cache, http_pool, auth, apiutils
 import views/[general, about]
 import routes/[
-  preferences, timeline, status, media, search, rss, list, debug,
-  unsupported, embed, resolver, router_utils]
+  preferences, timeline, status, media, search, rss, list, community, debug,
+  unsupported, embed, resolver, broadcast, space, article, router_utils]
 
 const instancesUrl = "https://github.com/zedeus/nitter/wiki/Instances"
 const issuesUrl = "https://github.com/zedeus/nitter/issues"
@@ -34,40 +34,55 @@ stdout.flushFile
 updateDefaultPrefs(fullCfg)
 setCacheTimes(cfg)
 setHmacKey(cfg.hmacKey)
+if cfg.hmacKey.len == 0 or cfg.hmacKey == "secretkey":
+  stderr.write "WARNING: insecure default 'hmacKey' in nitter.conf; " &
+    "set a unique random value to stop media URL signatures being forgeable.\n"
+  stderr.flushFile
 setProxyEncoding(cfg.base64Media)
 setMaxHttpConns(cfg.httpMaxConns)
 setHttpProxy(cfg.proxy, cfg.proxyAuth)
 setApiProxy(cfg.apiProxy)
 setDisableTid(cfg.disableTid)
 setMaxConcurrentReqs(cfg.maxConcurrentReqs)
+setMaxRetries(cfg.maxRetries)
+setRetryDelayMs(cfg.retryDelayMs)
 initAboutPage(cfg.staticDir)
 
 waitFor initRedisPool(cfg)
 stdout.write &"Connected to Redis at {cfg.redisHost}:{cfg.redisPort}\n"
 stdout.flushFile
 
+createArticleRouter(cfg)
 createUnsupportedRouter(cfg)
 createResolverRouter(cfg)
 createPrefRouter(cfg)
 createTimelineRouter(cfg)
 createListRouter(cfg)
+createCommunityRouter(cfg)
 createStatusRouter(cfg)
 createSearchRouter(cfg)
 createMediaRouter(cfg)
 createEmbedRouter(cfg)
 createRssRouter(cfg)
+createBroadcastRouter(cfg)
+createSpaceRouter(cfg)
 createDebugRouter(cfg)
 
 settings:
   port = Port(cfg.port)
-  staticDir = cfg.staticDir
+  staticDir = normalizedPath(cfg.staticDir)
   bindAddr = cfg.address
   reusePort = true
+  maxBody = 64 * 1024
 
 routes:
   before:
-    # skip all file URLs
-    cond "." notin request.path
+    # Reject malformed paths
+    if request.path.len == 0 or request.path[0] != '/':
+      halt Http400
+
+    # skip all file URLs (except Twitter widget compatibility)
+    cond "." notin request.path or request.path == "/embed/Tweet.html"
     applyUrlPrefs()
 
   get "/":
@@ -110,14 +125,18 @@ routes:
     resp Http429, showError(
       &"Instance has no auth tokens, or is fully rate limited.<br>Use {link} or try again later.", cfg)
 
+  extend articleRoute, ""
   extend rss, ""
   extend status, ""
   extend search, ""
   extend timeline, ""
   extend media, ""
   extend list, ""
+  extend community, ""
   extend preferences, ""
   extend resolver, ""
   extend embed, ""
+  extend broadcastRoute, ""
+  extend spaceRoute, ""
   extend debug, ""
   extend unsupported, ""

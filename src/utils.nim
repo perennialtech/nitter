@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import strutils, strformat, uri, tables, base64
+import sequtils, strutils, strformat, uri, tables, base64
 import nimcrypto
 
 var
@@ -17,7 +17,9 @@ const
     "abs.twimg.com",
     "pbs.twimg.com",
     "video.twimg.com",
-    "x.com"
+    "x.com",
+    "pscp.tv",
+    "video.pscp.tv"
   ]
 
 proc setHmacKey*(key: string) =
@@ -38,12 +40,14 @@ proc getVidUrl*(link: string): string =
     &"/video/{sig}/{encodeUrl(link)}"
 
 proc getPicUrl*(link: string): string =
+  if link.len == 0: return
   if base64Media:
     &"/pic/enc/{encode(link, safe=true)}"
   else:
     &"/pic/{encodeUrl(link)}"
 
 proc getOrigPicUrl*(link: string): string =
+  if link.len == 0: return
   if base64Media:
     &"/pic/orig/enc/{encode(link, safe=true)}"
   else:
@@ -55,7 +59,13 @@ proc filterParams*(params: Table): seq[(string, string)] =
       result.add p
 
 proc isTwitterUrl*(uri: Uri): bool =
-  uri.hostname in twitterDomains
+  uri.scheme in ["http", "https"] and
+    (uri.hostname in twitterDomains or uri.hostname.endsWith(".video.pscp.tv"))
 
 proc isTwitterUrl*(url: string): bool =
   isTwitterUrl(parseUri(url))
+
+proc validateNumber*(value: string): string =
+  if value.anyIt(not it.isDigit):
+    return ""
+  return value

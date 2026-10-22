@@ -1,0 +1,213 @@
+name: Tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  integration-config:
+    name: Check live test credentials
+    runs-on: ubuntu-24.04
+    outputs:
+      enabled: ${{ steps.sessions.outputs.enabled }}
+    steps:
+      - name: Check for session credentials
+        id: sessions
+        env:
+          SESSIONS: ${{ secrets.SESSIONS }}
+        run: |
+          if [[ -n "$SESSIONS" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live Twitter tests require the SESSIONS repository secret; offline tests still run."
+          fi
+
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        nim: ["2.0.x", "2.2.x", "devel"]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsass-dev libpcre3
+
+      - name: Cache Nimble Dependencies
+        id: cache-nimble
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.nimble/pkgcache
+            ~/.nimble/packages_official.json
+          key: ${{ matrix.nim }}-nimble-v6-${{ hashFiles('*.nimble') }}
+          restore-keys: |
+            ${{ matrix.nim }}-nimble-v6-
+
+      - name: Setup Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: ${{ matrix.nim }}
+          use-nightlies: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Project
+        run: nimble build -Y
+
+      - name: Generate assets
+        run: |
+          nimble scss
+          nimble md
+
+      - name: Run security regression tests
+        run: nim r tests/test_ssrf_1411.nim
+
+      - name: Upload 2.2.x build artifact
+        if: matrix.nim == '2.2.x'
+        uses: actions/upload-artifact@v6
+        with:
+          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          path: |
+            ./nitter
+            ./public
+          if-no-files-found: error
+
+  offline-test:
+    needs: [build-test]
+    name: Offline smoke tests
+    runs-on: ubuntu-24.04
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpcre3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          path: .
+
+      - name: Test local pages and Catppuccin themes
+        run: |
+          chmod +x ./nitter
+          cp nitter.example.conf nitter.conf
+          : > sessions.jsonl
+          ./nitter > nitter.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          NITTER_TEST_URL=http://127.0.0.1:8080 \
+            python3 -m unittest discover -s tests -p test_fork_smoke.py -v \
+            || { cat nitter.log; exit 1; }
+
+  integration-test:
+    needs: [build-test, integration-config]
+    if: needs.integration-config.outputs.enabled == 'true'
+    name: Integration test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Install runtime deps
+        run: |
+          sudo apt-get install -y --no-install-recommends libsass-dev libpcre3
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Cache pipx (poetry)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.local/pipx
+            ~/.local/bin
+          key: pipx-poetry-${{ runner.os }}
+
+      - name: Install poetry
+        env:
+          PIPX_HOME: ~/.local/pipx
+          PIPX_BIN_DIR: ~/.local/bin
+        run: command -v poetry >/dev/null 2>&1 || pipx install poetry
+
+      - name: Setup Python (3.14) with Poetry cache
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: poetry
+          cache-dependency-path: tests/poetry.lock
+
+      - name: Install Python deps
+        working-directory: tests
+        run: poetry sync
+
+      - name: Cache Nimble Dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.nimble/pkgcache
+            ~/.nimble/packages_official.json
+          key: 2.2.x-nimble-v6-${{ hashFiles('*.nimble') }}
+          restore-keys: |
+            2.2.x-nimble-v6-
+
+      - name: Setup Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: 2.2.x
+          use-nightlies: true
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Nimble dependencies
+        run: nimble install -y --depsOnly
+
+      - name: Download 2.2.x build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nitter-linux-nim-2.2.x-${{ github.sha }}
+          path: .
+
+      - name: Make nitter binary executable
+        run: chmod +x ./nitter
+
+      - name: Prepare Nitter Environment
+        env:
+          SESSIONS: ${{ secrets.SESSIONS }}
+        run: |
+          cp nitter.example.conf nitter.conf
+          sed -i 's/enableDebug = false/enableDebug = true/g' nitter.conf
+          sed -i 's/maxRetries = 1/maxRetries = 3/g' nitter.conf
+          sed -i 's/hostname = "nitter.net"/hostname = "localhost:8080"/g' nitter.conf
+
+          nim r tools/rendermd.nim
+          nim r tools/gencss.nim
+
+          printf '%s\n' "$SESSIONS" > ./sessions.jsonl
+
+      - name: Run Tests
+        run: |
+          ./nitter &
+          cd tests
+          poetry run pytest -n2 --rs .
