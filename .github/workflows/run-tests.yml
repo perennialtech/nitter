@@ -116,11 +116,15 @@ jobs:
           chmod +x ./nitter
           cp nitter.example.conf nitter.conf
           : > sessions.jsonl
+          echo '127.0.0.1 pbs.twimg.com' | sudo tee -a /etc/hosts >/dev/null
           ./nitter > nitter.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          NITTER_TEST_URL=http://127.0.0.1:8080 \
+          NITTER_TEST_URL=http://127.0.0.1:8080 NITTER_TEST_PID="$server_pid" \
             python3 -m unittest discover -s tests -p test_fork_smoke.py -v \
+            || { cat nitter.log; exit 1; }
+          NITTER_TEST_URL=http://127.0.0.1:8080 NITTER_TEST_PID="$server_pid" \
+            python3 -m unittest discover -s tests -p test_media_socket_cleanup.py -v \
             || { cat nitter.log; exit 1; }
 
   integration-test:

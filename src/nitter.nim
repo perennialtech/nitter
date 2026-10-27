@@ -6,7 +6,7 @@ from os import getEnv, normalizedPath
 
 import jester
 
-import types, config, prefs, formatters, redis_cache, http_pool, auth, apiutils
+import types, config, prefs, formatters, redis_cache, http_client, auth, apiutils
 import views/[general, about]
 import routes/[
   preferences, timeline, status, media, search, rss, list, community, debug,
@@ -39,7 +39,6 @@ if cfg.hmacKey.len == 0 or cfg.hmacKey == "secretkey":
     "set a unique random value to stop media URL signatures being forgeable.\n"
   stderr.flushFile
 setProxyEncoding(cfg.base64Media)
-setMaxHttpConns(cfg.httpMaxConns)
 setHttpProxy(cfg.proxy, cfg.proxyAuth)
 setApiProxy(cfg.apiProxy)
 setDisableTid(cfg.disableTid)
