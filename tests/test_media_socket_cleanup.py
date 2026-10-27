@@ -14,16 +14,23 @@ PAYLOAD = b"media proxy response" * 4096
 
 class MediaHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    release_stalls = threading.Event()
 
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
-        if self.path == "/length":
+        if self.path in ("/length", "/stall"):
             self.send_header("Content-Length", str(len(PAYLOAD)))
         else:
             self.send_header("Connection", "close")
             self.close_connection = True
         self.end_headers()
+        if self.path == "/stall":
+            self.wfile.write(b"partial")
+            self.wfile.flush()
+            self.release_stalls.wait(20)
+            self.close_connection = True
+            return
         self.wfile.write(PAYLOAD)
 
     def log_message(self, *args):
@@ -46,6 +53,7 @@ class MediaSocketCleanupTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        MediaHandler.release_stalls.set()
         cls.server.shutdown()
         cls.server.server_close()
         cls.thread.join()
@@ -71,6 +79,35 @@ class MediaSocketCleanupTests(unittest.TestCase):
         time.sleep(0.25)
         after = len(os.listdir(self.fd_path))
         self.assertLessEqual(after - before, 4, "raw media sockets are not released")
+
+    def test_stalled_upstream_body_closes_stream(self):
+        before = len(os.listdir(self.fd_path))
+        media_url = f"http://pbs.twimg.com:{self.port}/stall"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        # Repeated failures distinguish genuine cleanup from the old
+        # four-FD allowance accidentally accepting one leaked socket pair.
+        for _ in range(6):
+            conn = http.client.HTTPConnection(self.base, timeout=9)
+            try:
+                conn.request("GET", f"/pic/enc/{encoded}")
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                with self.assertRaises(http.client.IncompleteRead):
+                    response.read()
+            finally:
+                conn.close()
+        time.sleep(0.25)
+        after = len(os.listdir(self.fd_path))
+        self.assertLessEqual(after - before, 2, "stalled media streams retained sockets")
+        # A detached watchdog failure must not stop the server event loop.
+        conn = http.client.HTTPConnection(self.base, timeout=5)
+        try:
+            conn.request("GET", "/")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertTrue(response.read())
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":
