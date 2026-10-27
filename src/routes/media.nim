@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import uri, strutils, httpclient, os, hashes, base64, re
+import uri, strutils, httpclient, os, hashes, base64, re, times
 import asynchttpserver, asyncstreams, asyncfile, asyncnet
 import asyncdispatch
 
@@ -14,6 +14,28 @@ export httpclient, os, strutils, asyncstreams, base64, re
 const
   m3u8Mime* = "application/vnd.apple.mpegurl"
   maxAge* = "max-age=604800"
+  mediaIdleTimeoutMs = 5000
+
+type MediaStreamWatch = ref object
+  done: bool
+  lastProgress: float
+
+proc watchMediaStream(watch: MediaStreamWatch; upstream: AsyncHttpClient;
+                      downstream: jester.Request; stream: FutureStream[string]) {.async.} =
+  # Exactly one periodic timer per media response, rather than a timer for
+  # every chunk: withTimeout on each FutureStream.read() retains many timers.
+  while not watch.done:
+    let remaining = max(1, mediaIdleTimeoutMs -
+        int((epochTime() - watch.lastProgress) * 1000))
+    await sleepAsync(remaining)
+    if not watch.done and epochTime() - watch.lastProgress >=
+        mediaIdleTimeoutMs.float / 1000:
+      echo "[media] Streaming stalled; closing upstream and downstream"
+      upstream.close()
+      downstream.close()
+      if not stream.finished:
+        stream.fail(newException(IOError, "Media stream stalled"))
+      return
 
 proc safeFetch*(url: string): Future[string] {.async.} =
   # maxRedirects=0: the caller already validated the host, so never follow a
@@ -90,16 +112,21 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
 
           # Raw-mode responses bypass Jester's socket lifecycle. Close through
           # Jester so httpbeast also unregisters the socket from its selector.
+          let watch = MediaStreamWatch(lastProgress: epochTime())
+          asyncCheck watchMediaStream(watch, client, req, res.bodyStream)
           try:
             respond(request, headers)
             var (hasValue, data) = (true, "")
             while hasValue:
               (hasValue, data) = await res.bodyStream.read()
               if hasValue:
+                watch.lastProgress = epochTime()
                 await request.client.send(data)
+                watch.lastProgress = epochTime()
           except CatchableError:
             echo "[media] Stream interrupted, url: ", fetchUrl, ", error: ", getCurrentExceptionMsg()
           finally:
+            watch.done = true
             req.close()
           return Http200
     except CatchableError:
