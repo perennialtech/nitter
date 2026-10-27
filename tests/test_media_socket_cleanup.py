@@ -84,18 +84,30 @@ class MediaSocketCleanupTests(unittest.TestCase):
         before = len(os.listdir(self.fd_path))
         media_url = f"http://pbs.twimg.com:{self.port}/stall"
         encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
-        conn = http.client.HTTPConnection(self.base, timeout=9)
-        try:
-            conn.request("GET", f"/pic/enc/{encoded}")
-            response = conn.getresponse()
-            self.assertEqual(response.status, 200)
-            with self.assertRaises(http.client.IncompleteRead):
-                response.read()
-        finally:
-            conn.close()
+        # Repeated failures distinguish genuine cleanup from the old
+        # four-FD allowance accidentally accepting one leaked socket pair.
+        for _ in range(6):
+            conn = http.client.HTTPConnection(self.base, timeout=9)
+            try:
+                conn.request("GET", f"/pic/enc/{encoded}")
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                with self.assertRaises(http.client.IncompleteRead):
+                    response.read()
+            finally:
+                conn.close()
         time.sleep(0.25)
         after = len(os.listdir(self.fd_path))
-        self.assertLessEqual(after - before, 4, "stalled media stream retained sockets")
+        self.assertLessEqual(after - before, 2, "stalled media streams retained sockets")
+        # A detached watchdog failure must not stop the server event loop.
+        conn = http.client.HTTPConnection(self.base, timeout=5)
+        try:
+            conn.request("GET", "/")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertTrue(response.read())
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":
