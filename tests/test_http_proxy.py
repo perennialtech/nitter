@@ -1,4 +1,4 @@
-"""Exercise Nitter's HTTP pool through local HTTP and HTTPS CONNECT proxies."""
+"""Exercise Nitter's HTTP requests through local HTTP and HTTPS CONNECT proxies."""
 
 from pathlib import Path
 import base64
@@ -59,27 +59,28 @@ class HttpProxyTests(unittest.TestCase):
         listener = socket.socket()
         self.addCleanup(listener.close)
         listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
+        listener.listen(2)
         listener.settimeout(20)
         port = listener.getsockname()[1]
 
         def serve():
             try:
-                connection, _ = listener.accept()
-                connection.settimeout(10)
-                with connection:
-                    if tls:
-                        observed.append(self.read_headers(connection))
-                        connection.sendall(
-                            b"HTTP/1.1 200 Connection established\r\nContent-Length: 0\r\n\r\n"
-                        )
-                        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                        context.load_cert_chain(self.certificate, self.key)
-                        connection = context.wrap_socket(connection, server_side=True)
+                for _ in range(2):
+                    connection, _ = listener.accept()
+                    connection.settimeout(10)
                     with connection:
-                        for _ in range(2):
+                        if tls:
+                            observed.append(self.read_headers(connection))
+                            connection.sendall(
+                                b"HTTP/1.1 200 Connection established\r\nContent-Length: 0\r\n\r\n"
+                            )
+                            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                            context.load_cert_chain(self.certificate, self.key)
+                            connection = context.wrap_socket(connection, server_side=True)
+                        with connection:
                             observed.append(self.read_headers(connection))
                             connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+                            self.assertEqual(connection.recv(1), b"", "client retained proxy socket")
             except Exception as error:
                 errors.append(error)
 
@@ -115,7 +116,8 @@ class HttpProxyTests(unittest.TestCase):
         requests = self.proxy_requests(tls=True)
         self.assertEqual(requests[0][0], "CONNECT origin.test:443 HTTP/1.1")
         self.assertEqual(requests[0][1]["host"], "origin.test:443")
-        self.check_requests(requests[1:], self.path)
+        self.assertEqual(requests[2][0], "CONNECT origin.test:443 HTTP/1.1")
+        self.check_requests([requests[1], requests[3]], self.path)
 
     def check_auth(self, requests, credentials):
         self.check_requests(requests, "http://origin.test" + self.path)
@@ -145,6 +147,34 @@ class HttpProxyTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("proxyAuth must contain username:password", result.stdout)
+
+    def test_rejected_connect_closes_proxy_socket(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        self.addCleanup(listener.close)
+        port = listener.getsockname()[1]
+        observed = []
+
+        def serve():
+            connection, _ = listener.accept()
+            with connection:
+                connection.settimeout(5)
+                observed.append(self.read_headers(connection)[0])
+                connection.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+                observed.append(connection.recv(1))
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        result = subprocess.run(
+            [str(self.client), f"http://127.0.0.1:{port}",
+             "https://origin.test/path", str(self.certificate), "", "reject-connect"],
+            capture_output=True, text=True, timeout=15,
+        )
+        thread.join(timeout=8)
+        self.assertFalse(thread.is_alive(), "Failed CONNECT left a proxy socket open")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(observed, ["CONNECT origin.test:443 HTTP/1.1", b""])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import httpclient, asyncdispatch, options, strutils, uri, times, math, tables
 import jsony, packedjson, zippy, oauth/oauth1
-import types, auth, consts, parserutils, http_pool, tid
+import types, auth, consts, parserutils, http_client, tid
 import experimental/types/common
 
 const
@@ -26,7 +26,6 @@ proc cfTitle*(body: string): string =
   body[contentStart ..< stop].splitWhitespace().join(" ")
 
 var
-  pool: HttpPool
   disableTid: bool
   apiProxy: string
   maxRetries: int
@@ -124,9 +123,6 @@ proc getAndValidateSession*(req: ApiReq): Future[Session] {.async.} =
       raise rateLimitError()
 
 template fetchImpl(result, fetchBody) {.dirty.} =
-  once:
-    pool = HttpPool()
-
   try:
     var resp: AsyncResponse
     let skipTid = case session.kind
@@ -134,7 +130,7 @@ template fetchImpl(result, fetchBody) {.dirty.} =
       of cookie: req.cookie.skipTid
     let headers = await genHeaders(session, url, skipTid)
 
-    pool.use(headers):
+    useHttpClient(headers):
       template getContent =
         # TODO: this is a temporary simple implementation
         if apiProxy.len > 0 and "/1.1/" notin url.path:
@@ -146,7 +142,6 @@ template fetchImpl(result, fetchBody) {.dirty.} =
       getContent()
 
       if resp.status == $Http503:
-        badClient = true
         raise newException(BadClientError, "Bad client")
 
       if resp.status == $Http404 and result.len == 0:

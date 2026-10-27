@@ -81,19 +81,26 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
 
           let headers = newHttpHeaders({
             "content-type": res.headers["content-type", 0],
-            "content-length": contentLength,
+            "connection": "close",
             "cache-control": maxAge,
             "etag": hashed
           })
+          if contentLength.len > 0:
+            headers["content-length"] = contentLength
 
-          respond(request, headers)
-
-          var (hasValue, data) = (true, "")
-          while hasValue:
-            (hasValue, data) = await res.bodyStream.read()
-            if hasValue:
-              await request.client.send(data)
-          data.setLen 0
+          # Raw-mode responses bypass Jester's socket lifecycle. Close through
+          # Jester so httpbeast also unregisters the socket from its selector.
+          try:
+            respond(request, headers)
+            var (hasValue, data) = (true, "")
+            while hasValue:
+              (hasValue, data) = await res.bodyStream.read()
+              if hasValue:
+                await request.client.send(data)
+          except CatchableError:
+            echo "[media] Stream interrupted, url: ", fetchUrl, ", error: ", getCurrentExceptionMsg()
+          finally:
+            req.close()
           return Http200
     except CatchableError:
       if attempt < 2:
