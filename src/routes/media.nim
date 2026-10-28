@@ -31,16 +31,12 @@ proc peerDisconnected(req: jester.Request): bool =
   if socket.isClosed:
     return true
 
-  # A proxy may close the request while we await upstream headers or data.
-  # Peeking at the nonblocking socket detects EOF without consuming pipelined
-  # input or interfering with httpbeast's request handling.
-  var byte: char
-  let received = posix.recv(socket.getFd(), addr byte, 1, MSG_PEEK)
-  if received == 0:
-    return true
-  if received < 0:
-    let err = osLastError().int
-    return err != EAGAIN.int and err != EWOULDBLOCK.int and err != EINTR.int
+  # A FIN also occurs when the client half-closes its sending side but
+  # still expects the response. POLLHUP/POLLERR indicate a broken socket;
+  # unlike reading EOF, these do not mistake a half-close for abandonment.
+  var fd = TPollfd(fd: socket.getFd().cint, events: 0)
+  let ready = posix.poll(addr fd, Tnfds(1), 0)
+  return ready > 0 and (fd.revents and (POLLHUP or POLLERR or POLLNVAL)) != 0
 
 proc signalForwarded(watch: MediaStreamWatch) =
   if watch.forwardedChanged != nil and not watch.forwardedChanged.finished:
