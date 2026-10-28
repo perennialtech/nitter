@@ -171,9 +171,9 @@ class MediaSocketCleanupTests(unittest.TestCase):
         self.assertLessEqual(after - before, 4, "abandoned streams retained sockets")
 
     def test_half_closed_client_can_still_receive_media(self):
-        media_url = f"http://pbs.twimg.com:{self.port}/length"
+        media_url = f"http://pbs.twimg.com:{self.port}/delayed-headers"
         encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
-        sock = socket.create_connection(("127.0.0.1", int(self.base.rsplit(":", 1)[1])), timeout=8)
+        sock = socket.create_connection(("127.0.0.1", int(self.base.rsplit(":", 1)[1])), timeout=12)
         try:
             request = (f"GET /pic/enc/{encoded} HTTP/1.1\r\n"
                        f"Host: {self.base}\r\nConnection: close\r\n\r\n")
@@ -182,7 +182,7 @@ class MediaSocketCleanupTests(unittest.TestCase):
             response = http.client.HTTPResponse(sock)
             response.begin()
             self.assertEqual(response.status, 200)
-            self.assertEqual(response.read(), PAYLOAD)
+            self.assertEqual(response.read(), b"valid delayed body")
         finally:
             sock.close()
 
