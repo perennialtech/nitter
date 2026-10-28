@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 PAYLOAD = b"media proxy response" * 4096
+STREAM_BLOCK = b"x" * 65536
 
 
 class MediaHandler(BaseHTTPRequestHandler):
@@ -17,6 +18,20 @@ class MediaHandler(BaseHTTPRequestHandler):
     release_stalls = threading.Event()
 
     def do_GET(self):
+        if self.path == "/slow-big":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(STREAM_BLOCK) * 1024))
+            self.end_headers()
+            try:
+                for _ in range(1024):
+                    self.wfile.write(STREAM_BLOCK)
+                    self.wfile.flush()
+                    time.sleep(0.006)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         if self.path in ("/length", "/stall"):
@@ -108,6 +123,56 @@ class MediaSocketCleanupTests(unittest.TestCase):
             self.assertTrue(response.read())
         finally:
             conn.close()
+
+    def test_slow_readers_do_not_buffer_entire_upstream_media(self):
+        pid = os.environ["NITTER_TEST_PID"]
+
+        def rss_kib():
+            with open(f"/proc/{pid}/status", encoding="ascii") as status:
+                return int(next(line for line in status if line.startswith("VmRSS:")).split()[1])
+
+        stop = threading.Event()
+        started = threading.Barrier(4)
+        errors = []
+
+        def slow_reader():
+            media_url = f"http://pbs.twimg.com:{self.port}/slow-big"
+            encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+            conn = http.client.HTTPConnection(self.base, timeout=15)
+            try:
+                conn.request("GET", f"/pic/enc/{encoded}")
+                response = conn.getresponse()
+                if response.status != 200:
+                    errors.append(f"media request returned {response.status}")
+                started.wait(timeout=10)
+                while not stop.is_set():
+                    if not response.read(65536):
+                        break
+                    time.sleep(0.08)
+            except Exception as exc:
+                errors.append(str(exc))
+            finally:
+                conn.close()
+
+        before = rss_kib()
+        readers = [threading.Thread(target=slow_reader) for _ in range(3)]
+        for reader in readers:
+            reader.start()
+        try:
+            started.wait(timeout=10)
+            # Three 64 MiB upstreams fill FutureStream under the old code,
+            # whereas forwarding-aware backpressure keeps the queue small.
+            peak = before
+            for _ in range(8):
+                time.sleep(1)
+                peak = max(peak, rss_kib())
+            self.assertLess(peak - before, 80 * 1024,
+                            f"media queues grew RSS by {(peak - before) / 1024:.1f} MiB")
+        finally:
+            stop.set()
+            for reader in readers:
+                reader.join(timeout=10)
+        self.assertFalse(errors, errors)
 
 
 if __name__ == "__main__":
