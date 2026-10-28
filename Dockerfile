@@ -2,8 +2,12 @@ FROM nim:2.2.12 AS nim
 LABEL maintainer="setenforce@protonmail.com"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsass-dev python3 \
+    && apt-get install -y --no-install-recommends libsass-dev python3 patch \
     && rm -rf /var/lib/apt/lists/*
+
+COPY tools/nim-httpclient-backpressure.patch /tmp/nim-httpclient-backpressure.patch
+RUN patch --batch --forward -p1 -d /opt/nim/lib \
+    < /tmp/nim-httpclient-backpressure.patch
 
 WORKDIR /src/nitter
 

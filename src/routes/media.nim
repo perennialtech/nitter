@@ -18,8 +18,28 @@ const
 
 type MediaStreamWatch = ref object
   done: bool
+  streaming: bool
   lastProgress: float
   pendingRead: Future[(bool, string)]
+  forwarded: BiggestInt
+  forwardedChanged: Future[void]
+
+proc signalForwarded(watch: MediaStreamWatch) =
+  if watch.forwardedChanged != nil and not watch.forwardedChanged.finished:
+    watch.forwardedChanged.complete()
+
+proc waitForForwarded(watch: MediaStreamWatch; received: BiggestInt): Future[void] {.async.} =
+  # AsyncHttpClient fills an unbounded FutureStream independently of its
+  # reader. The progress callback is awaited by the socket reader, so pause
+  # upstream when it gets ahead of the downstream send.
+  while watch.streaming and not watch.done and watch.forwarded < received:
+    # HTTP chunk framing is included in progress but not in the body stream.
+    # If the downstream reader is waiting for new data, nothing remains to
+    # forward, so allow the upstream parser to read the next chunk.
+    if watch.pendingRead != nil and not watch.pendingRead.finished:
+      return
+    watch.forwardedChanged = newFuture[void]("media forwarded")
+    await watch.forwardedChanged
 
 proc watchMediaStream(watch: MediaStreamWatch; upstream: AsyncHttpClient;
                       downstream: jester.Request) {.async.} =
@@ -73,6 +93,9 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
 
   for attempt in 0 .. 2:
     let client = newAsyncHttpClient(maxRedirects = 0)
+    let watch = MediaStreamWatch(lastProgress: epochTime())
+    client.onProgressChanged = proc(total, progress, speed: BiggestInt): Future[void] =
+      waitForForwarded(watch, progress)
     var shouldRetry = false
     try:
       let resFut = client.get(fetchUrl)
@@ -125,7 +148,11 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
 
           # Raw-mode responses bypass Jester's socket lifecycle. Close through
           # Jester so httpbeast also unregisters the socket from its selector.
-          let watch = MediaStreamWatch(lastProgress: epochTime())
+          # The upstream header negotiation may take nearly five seconds.
+          # The stream idle deadline must start when the body is handed off,
+          # not when the initial HTTP request was created.
+          watch.lastProgress = epochTime()
+          watch.streaming = true
           asyncCheck watchMediaStream(watch, client, req)
           try:
             respond(request, headers)
@@ -133,6 +160,8 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
             while hasValue:
               let readFut = res.bodyStream.read()
               watch.pendingRead = readFut
+              if not readFut.finished:
+                watch.signalForwarded()
               try:
                 (hasValue, data) = await readFut
               finally:
@@ -140,11 +169,14 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
               if hasValue:
                 watch.lastProgress = epochTime()
                 await request.client.send(data)
+                watch.forwarded += data.len
+                watch.signalForwarded()
                 watch.lastProgress = epochTime()
           except CatchableError:
             echo "[media] Stream interrupted, url: ", fetchUrl, ", error: ", getCurrentExceptionMsg()
           finally:
             watch.done = true
+            watch.signalForwarded()
             req.close()
           return Http200
     except CatchableError:
@@ -155,6 +187,8 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
         echo "[media] Proxying exception, error: $1, url: $2" % [getCurrentExceptionMsg(), fetchUrl]
         result = Http404
     finally:
+      watch.done = true
+      watch.signalForwarded()
       client.close()
     if not shouldRetry:
       break

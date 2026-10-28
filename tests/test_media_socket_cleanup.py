@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 PAYLOAD = b"media proxy response" * 4096
+STREAM_BLOCK = b"x" * 65536
 
 
 class MediaHandler(BaseHTTPRequestHandler):
@@ -17,6 +18,53 @@ class MediaHandler(BaseHTTPRequestHandler):
     release_stalls = threading.Event()
 
     def do_GET(self):
+        if self.path == "/delayed-headers":
+            # Headers are slow, but the body is healthy and arrives less than
+            # the stream idle deadline after the headers were received.
+            time.sleep(2.4)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", "18")
+            self.end_headers()
+            time.sleep(3.0)
+            try:
+                self.wfile.write(b"valid delayed body")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
+        if self.path == "/chunked":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                for _ in range(900):
+                    self.wfile.write(b"1\r\nx\r\n")
+                    self.wfile.flush()
+                    time.sleep(0.002)
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
+        if self.path in ("/slow-big", "/fast-big"):
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(STREAM_BLOCK) * 1024))
+            self.end_headers()
+            try:
+                for _ in range(1024):
+                    self.wfile.write(STREAM_BLOCK)
+                    self.wfile.flush()
+                    if self.path == "/slow-big":
+                        time.sleep(0.006)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         if self.path in ("/length", "/stall"):
@@ -106,6 +154,103 @@ class MediaSocketCleanupTests(unittest.TestCase):
             response = conn.getresponse()
             self.assertEqual(response.status, 200)
             self.assertTrue(response.read())
+        finally:
+            conn.close()
+
+    def assert_upstream_media_is_bounded(self, path):
+        pid = os.environ["NITTER_TEST_PID"]
+
+        def rss_kib():
+            with open(f"/proc/{pid}/status", encoding="ascii") as status:
+                return int(next(line for line in status if line.startswith("VmRSS:")).split()[1])
+
+        stop = threading.Event()
+        started = threading.Barrier(4)
+        errors = []
+
+        def slow_reader():
+            media_url = f"http://pbs.twimg.com:{self.port}/{path}"
+            encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+            conn = http.client.HTTPConnection(self.base, timeout=15)
+            try:
+                conn.request("GET", f"/pic/enc/{encoded}")
+                response = conn.getresponse()
+                if response.status != 200:
+                    errors.append(f"media request returned {response.status}")
+                started.wait(timeout=10)
+                while not stop.is_set():
+                    if not response.read(65536):
+                        break
+                    time.sleep(0.08)
+            except Exception as exc:
+                errors.append(str(exc))
+            finally:
+                conn.close()
+
+        before = rss_kib()
+        readers = [threading.Thread(target=slow_reader) for _ in range(3)]
+        for reader in readers:
+            reader.start()
+        try:
+            started.wait(timeout=10)
+            # Three 64 MiB upstreams fill FutureStream under the old code,
+            # whereas forwarding-aware backpressure keeps the queue small.
+            peak = before
+            for _ in range(8):
+                time.sleep(1)
+                peak = max(peak, rss_kib())
+            self.assertLess(peak - before, 80 * 1024,
+                            f"media queues grew RSS by {(peak - before) / 1024:.1f} MiB")
+        finally:
+            stop.set()
+            for reader in readers:
+                reader.join(timeout=10)
+        self.assertFalse(errors, errors)
+
+    def test_slow_readers_do_not_buffer_entire_upstream_media(self):
+        self.assert_upstream_media_is_bounded("slow-big")
+
+    def test_fast_upstream_does_not_fill_the_buffer_before_backpressure(self):
+        self.assert_upstream_media_is_bounded("fast-big")
+
+    def test_fast_upstream_transfers_complete_body(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/fast-big"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=20)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Length"), str(len(STREAM_BLOCK) * 1024))
+            total = 0
+            while chunk := response.read(len(STREAM_BLOCK)):
+                self.assertEqual(chunk, STREAM_BLOCK)
+                total += len(chunk)
+            self.assertEqual(total, len(STREAM_BLOCK) * 1024)
+        finally:
+            conn.close()
+
+    def test_chunked_media_does_not_stall_on_framing_bytes(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/chunked"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=10)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"x" * 900)
+        finally:
+            conn.close()
+
+    def test_slow_headers_do_not_consume_the_body_idle_timeout(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/delayed-headers"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=12)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"valid delayed body")
         finally:
             conn.close()
 
