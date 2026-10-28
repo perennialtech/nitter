@@ -18,6 +18,22 @@ class MediaHandler(BaseHTTPRequestHandler):
     release_stalls = threading.Event()
 
     def do_GET(self):
+        if self.path == "/delayed-headers":
+            # Headers are slow, but the body is healthy and arrives less than
+            # the stream idle deadline after the headers were received.
+            time.sleep(2.4)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", "18")
+            self.end_headers()
+            time.sleep(3.0)
+            try:
+                self.wfile.write(b"valid delayed body")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         if self.path == "/chunked":
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
@@ -223,6 +239,18 @@ class MediaSocketCleanupTests(unittest.TestCase):
             response = conn.getresponse()
             self.assertEqual(response.status, 200)
             self.assertEqual(response.read(), b"x" * 900)
+        finally:
+            conn.close()
+
+    def test_slow_headers_do_not_consume_the_body_idle_timeout(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/delayed-headers"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=12)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"valid delayed body")
         finally:
             conn.close()
 

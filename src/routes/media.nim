@@ -148,6 +148,10 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
 
           # Raw-mode responses bypass Jester's socket lifecycle. Close through
           # Jester so httpbeast also unregisters the socket from its selector.
+          # The upstream header negotiation may take nearly five seconds.
+          # The stream idle deadline must start when the body is handed off,
+          # not when the initial HTTP request was created.
+          watch.lastProgress = epochTime()
           watch.streaming = true
           asyncCheck watchMediaStream(watch, client, req)
           try:
