@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import uri, strutils, httpclient, os, hashes, base64, re, times
+import uri, strutils, httpclient, os, hashes, base64, re, times, posix
 import asynchttpserver, asyncstreams, asyncfile, asyncnet
 import asyncdispatch
 
@@ -15,6 +15,7 @@ const
   m3u8Mime* = "application/vnd.apple.mpegurl"
   maxAge* = "max-age=604800"
   mediaIdleTimeoutMs = 5000
+  mediaDisconnectPollMs = 100
 
 type MediaStreamWatch = ref object
   done: bool
@@ -23,6 +24,19 @@ type MediaStreamWatch = ref object
   pendingRead: Future[(bool, string)]
   forwarded: BiggestInt
   forwardedChanged: Future[void]
+  disconnected: bool
+
+proc peerDisconnected(req: jester.Request): bool =
+  let socket = req.getNativeReq().client
+  if socket.isClosed:
+    return true
+
+  # A FIN also occurs when the client half-closes its sending side but
+  # still expects the response. POLLHUP/POLLERR indicate a broken socket;
+  # unlike reading EOF, these do not mistake a half-close for abandonment.
+  var fd = TPollfd(fd: socket.getFd().cint, events: 0)
+  let ready = posix.poll(addr fd, Tnfds(1), 0)
+  return ready > 0 and (fd.revents and (POLLHUP or POLLERR or POLLNVAL)) != 0
 
 proc signalForwarded(watch: MediaStreamWatch) =
   if watch.forwardedChanged != nil and not watch.forwardedChanged.finished:
@@ -43,16 +57,23 @@ proc waitForForwarded(watch: MediaStreamWatch; received: BiggestInt): Future[voi
 
 proc watchMediaStream(watch: MediaStreamWatch; upstream: AsyncHttpClient;
                       downstream: jester.Request) {.async.} =
-  # Exactly one periodic timer per media response, rather than a timer for
-  # every chunk: withTimeout on each FutureStream.read() retains many timers.
+  # Monitor the downstream even before the upstream responds. Otherwise a
+  # disconnected client can leave several timed-out retries holding sockets.
   try:
     while not watch.done:
-      let remaining = max(1, mediaIdleTimeoutMs -
-          int((epochTime() - watch.lastProgress) * 1000))
-      await sleepAsync(remaining)
-      if not watch.done and epochTime() - watch.lastProgress >=
-          mediaIdleTimeoutMs.float / 1000:
-        echo "[media] Streaming stalled; closing upstream and downstream"
+      await sleepAsync(mediaDisconnectPollMs)
+      if watch.done:
+        return
+      let disconnected = downstream.peerDisconnected()
+      let stalled = watch.streaming and epochTime() - watch.lastProgress >=
+          mediaIdleTimeoutMs.float / 1000
+      if disconnected or stalled:
+        if disconnected:
+          watch.disconnected = true
+        else:
+          echo "[media] Streaming stalled; closing upstream and downstream"
+        watch.done = true
+        watch.signalForwarded()
         # A TLS shutdown can raise; still close the downstream and wake the
         # currently blocked read. Do not fail FutureStream itself: it may
         # already be completed while its queue still contains unread data.
@@ -65,7 +86,7 @@ proc watchMediaStream(watch: MediaStreamWatch; upstream: AsyncHttpClient;
         except CatchableError:
           echo "[media] Downstream shutdown failed: ", getCurrentExceptionMsg()
         if watch.pendingRead != nil and not watch.pendingRead.finished:
-          watch.pendingRead.fail(newException(IOError, "Media stream stalled"))
+          watch.pendingRead.fail(newException(IOError, "Media stream interrupted"))
         return
   except CatchableError:
     echo "[media] Stream watchdog error: ", getCurrentExceptionMsg()
@@ -96,10 +117,13 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
     let watch = MediaStreamWatch(lastProgress: epochTime())
     client.onProgressChanged = proc(total, progress, speed: BiggestInt): Future[void] =
       waitForForwarded(watch, progress)
+    asyncCheck watchMediaStream(watch, client, req)
     var shouldRetry = false
     try:
       let resFut = client.get(fetchUrl)
       let completed = await withTimeout(resFut, 5000)
+      if watch.disconnected:
+        return Http200
       if not completed:
         if attempt < 2:
           echo "[media] Retry $1/2, timeout after 5s, url: $2" % [$(attempt + 1), fetchUrl]
@@ -153,7 +177,6 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
           # not when the initial HTTP request was created.
           watch.lastProgress = epochTime()
           watch.streaming = true
-          asyncCheck watchMediaStream(watch, client, req)
           try:
             respond(request, headers)
             var (hasValue, data) = (true, "")
@@ -180,6 +203,10 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
             req.close()
           return Http200
     except CatchableError:
+      # A disconnect closes the upstream while headers may still be pending.
+      # Do not retry or let Jester write an error to the closed socket.
+      if watch.disconnected:
+        return Http200
       if attempt < 2:
         echo "[media] Retry $1/2, error: $2, url: $3" % [$(attempt + 1), getCurrentExceptionMsg(), fetchUrl]
         shouldRetry = true
