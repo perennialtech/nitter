@@ -18,6 +18,22 @@ class MediaHandler(BaseHTTPRequestHandler):
     release_stalls = threading.Event()
 
     def do_GET(self):
+        if self.path == "/chunked":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                for _ in range(900):
+                    self.wfile.write(b"1\r\nx\r\n")
+                    self.wfile.flush()
+                    time.sleep(0.002)
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         if self.path == "/slow-big":
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
@@ -173,6 +189,18 @@ class MediaSocketCleanupTests(unittest.TestCase):
             for reader in readers:
                 reader.join(timeout=10)
         self.assertFalse(errors, errors)
+
+    def test_chunked_media_does_not_stall_on_framing_bytes(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/chunked"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=10)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"x" * 900)
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

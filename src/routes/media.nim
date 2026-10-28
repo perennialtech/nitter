@@ -33,6 +33,11 @@ proc waitForForwarded(watch: MediaStreamWatch; received: BiggestInt): Future[voi
   # reader. The progress callback is awaited by the socket reader, so pause
   # upstream when it gets ahead of the downstream send.
   while watch.streaming and not watch.done and watch.forwarded < received:
+    # HTTP chunk framing is included in progress but not in the body stream.
+    # If the downstream reader is waiting for new data, nothing remains to
+    # forward, so allow the upstream parser to read the next chunk.
+    if watch.pendingRead != nil and not watch.pendingRead.finished:
+      return
     watch.forwardedChanged = newFuture[void]("media forwarded")
     await watch.forwardedChanged
 
@@ -151,6 +156,8 @@ proc proxyMedia*(req: jester.Request; url: string): Future[HttpCode] {.async.} =
             while hasValue:
               let readFut = res.bodyStream.read()
               watch.pendingRead = readFut
+              if not readFut.finished:
+                watch.signalForwarded()
               try:
                 (hasValue, data) = await readFut
               finally:
