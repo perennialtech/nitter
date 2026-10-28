@@ -1,8 +1,10 @@
 """Exercise raw media responses against a local Twitter-host fixture."""
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import http.client
 import os
+import socket
 import threading
 import time
 import unittest
@@ -16,8 +18,14 @@ STREAM_BLOCK = b"x" * 65536
 class MediaHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     release_stalls = threading.Event()
+    header_requested = threading.Event()
+    release_headers = threading.Event()
 
     def do_GET(self):
+        if self.path == "/pending-headers":
+            self.header_requested.set()
+            self.release_headers.wait(10)
+            return
         if self.path == "/delayed-headers":
             # Headers are slow, but the body is healthy and arrives less than
             # the stream idle deadline after the headers were received.
@@ -102,6 +110,7 @@ class MediaSocketCleanupTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         MediaHandler.release_stalls.set()
+        MediaHandler.release_headers.set()
         cls.server.shutdown()
         cls.server.server_close()
         cls.thread.join()
@@ -127,6 +136,47 @@ class MediaSocketCleanupTests(unittest.TestCase):
         time.sleep(0.25)
         after = len(os.listdir(self.fd_path))
         self.assertLessEqual(after - before, 4, "raw media sockets are not released")
+
+    def test_abandoned_media_does_not_hold_upstream_sockets(self):
+        before = len(os.listdir(self.fd_path))
+        media_url = f"http://pbs.twimg.com:{self.port}/fast-big"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+
+        def abandon(_):
+            conn = http.client.HTTPConnection(self.base, timeout=10)
+            try:
+                conn.request("GET", f"/pic/enc/{encoded}")
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read(128)
+            finally:
+                if conn.sock:
+                    conn.sock.shutdown(socket.SHUT_RDWR)
+                conn.close()
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(abandon, range(36)))
+
+        # Previously the upstream sockets survived until the five-second
+        # idle watchdog fired, accumulating during bursts of client aborts.
+        time.sleep(1)
+        after = len(os.listdir(self.fd_path))
+        self.assertLessEqual(after - before, 4, "abandoned streams retained sockets")
+
+    def test_disconnected_client_does_not_wait_for_upstream_headers(self):
+        before = len(os.listdir(self.fd_path))
+        media_url = f"http://pbs.twimg.com:{self.port}/pending-headers"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=5)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            self.assertTrue(MediaHandler.header_requested.wait(3))
+        finally:
+            conn.close()
+
+        time.sleep(1)
+        after = len(os.listdir(self.fd_path))
+        self.assertLessEqual(after - before, 2, "abandoned header fetch retained a socket")
 
     def test_stalled_upstream_body_closes_stream(self):
         before = len(os.listdir(self.fd_path))
