@@ -1,0 +1,20 @@
+--- a/pure/httpclient.nim
++++ b/pure/httpclient.nim
+@@ -752,10 +752,12 @@ proc reportProgress(client: HttpClient | AsyncHttpClient,
+                     progress: BiggestInt) {.multisync.} =
+   client.contentProgress += progress
+   client.oneSecondProgress += progress
+-  if (getMonoTime() - client.lastProgressReport).inSeconds >= 1:
+-    if not client.onProgressChanged.isNil:
+-      await client.onProgressChanged(client.contentTotal,
+-                                     client.contentProgress,
+-                                     client.oneSecondProgress)
++  # Await the callback for each received block to support stream backpressure.
++  # Throttling it to once per second permits whole fast responses to queue.
++  if not client.onProgressChanged.isNil:
++    await client.onProgressChanged(client.contentTotal,
++                                   client.contentProgress,
++                                   client.oneSecondProgress)
++    if (getMonoTime() - client.lastProgressReport).inSeconds >= 1:
+       client.oneSecondProgress = 0
+       client.lastProgressReport = getMonoTime()

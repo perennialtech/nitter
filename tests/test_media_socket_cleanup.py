@@ -34,7 +34,7 @@ class MediaHandler(BaseHTTPRequestHandler):
                 pass
             return
 
-        if self.path == "/slow-big":
+        if self.path in ("/slow-big", "/fast-big"):
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(STREAM_BLOCK) * 1024))
@@ -43,7 +43,8 @@ class MediaHandler(BaseHTTPRequestHandler):
                 for _ in range(1024):
                     self.wfile.write(STREAM_BLOCK)
                     self.wfile.flush()
-                    time.sleep(0.006)
+                    if self.path == "/slow-big":
+                        time.sleep(0.006)
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
@@ -140,7 +141,7 @@ class MediaSocketCleanupTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_slow_readers_do_not_buffer_entire_upstream_media(self):
+    def assert_upstream_media_is_bounded(self, path):
         pid = os.environ["NITTER_TEST_PID"]
 
         def rss_kib():
@@ -152,7 +153,7 @@ class MediaSocketCleanupTests(unittest.TestCase):
         errors = []
 
         def slow_reader():
-            media_url = f"http://pbs.twimg.com:{self.port}/slow-big"
+            media_url = f"http://pbs.twimg.com:{self.port}/{path}"
             encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
             conn = http.client.HTTPConnection(self.base, timeout=15)
             try:
@@ -189,6 +190,29 @@ class MediaSocketCleanupTests(unittest.TestCase):
             for reader in readers:
                 reader.join(timeout=10)
         self.assertFalse(errors, errors)
+
+    def test_slow_readers_do_not_buffer_entire_upstream_media(self):
+        self.assert_upstream_media_is_bounded("slow-big")
+
+    def test_fast_upstream_does_not_fill_the_buffer_before_backpressure(self):
+        self.assert_upstream_media_is_bounded("fast-big")
+
+    def test_fast_upstream_transfers_complete_body(self):
+        media_url = f"http://pbs.twimg.com:{self.port}/fast-big"
+        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
+        conn = http.client.HTTPConnection(self.base, timeout=20)
+        try:
+            conn.request("GET", f"/pic/enc/{encoded}")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Length"), str(len(STREAM_BLOCK) * 1024))
+            total = 0
+            while chunk := response.read(len(STREAM_BLOCK)):
+                self.assertEqual(chunk, STREAM_BLOCK)
+                total += len(chunk)
+            self.assertEqual(total, len(STREAM_BLOCK) * 1024)
+        finally:
+            conn.close()
 
     def test_chunked_media_does_not_stall_on_framing_bytes(self):
         media_url = f"http://pbs.twimg.com:{self.port}/chunked"

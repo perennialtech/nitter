@@ -62,6 +62,12 @@ jobs:
           use-nightlies: ${{ matrix.nim == 'devel' }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Enable media download backpressure
+        run: |
+          nim_lib="$(dirname "$(dirname "$(readlink -f "$(command -v nim)")")")/lib"
+          patch --batch --forward -p1 -d "$nim_lib" \
+            < tools/nim-httpclient-backpressure.patch
+
       - name: Build Project
         run: nimble build -Y
 
