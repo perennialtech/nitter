@@ -146,19 +146,20 @@ class MediaSocketCleanupTests(unittest.TestCase):
         encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
 
         def abandon(_):
-            conn = http.client.HTTPConnection(self.base, timeout=10)
-            try:
-                conn.request("GET", f"/pic/enc/{encoded}")
-                response = conn.getresponse()
-                self.assertEqual(response.status, 200)
-                response.read(128)
-            finally:
-                if conn.sock:
-                    # Abort the unread response with a TCP reset, not an
-                    # orderly FIN (which can also mean a valid half-close).
-                    conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
-                                         struct.pack("ii", 1, 0))
-                conn.close()
+            host, port = self.base.rsplit(":", 1)
+            with socket.create_connection((host, int(port)), timeout=10) as sock:
+                request = (f"GET /pic/enc/{encoded} HTTP/1.1\r\n"
+                           f"Host: {self.base}\r\nConnection: close\r\n\r\n")
+                sock.sendall(request.encode())
+                headers = b""
+                while b"\r\n\r\n" not in headers:
+                    chunk = sock.recv(4096)
+                    self.assertTrue(chunk, "media response ended before headers")
+                    headers += chunk
+                self.assertIn(b" 200 ", headers.split(b"\r\n", 1)[0])
+                # Abort with a real TCP reset while unread media remains.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                                struct.pack("ii", 1, 0))
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(abandon, range(36)))
