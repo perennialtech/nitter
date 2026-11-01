@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, asyncnet, httpclient, net, strutils, unittest]
+import std/[asyncdispatch, asyncnet, httpclient, net, posix, strutils, unittest]
 import ../src/http_client
 
 proc serveOnce(listener: AsyncSocket; mode: string) {.async.} =
@@ -64,9 +64,25 @@ proc checkConnectingTimeout() {.async.} =
     first.connect("127.0.0.1", port)
     second.connect("127.0.0.1", port)
 
+    let request = client.getBounded("http://127.0.0.1:" & $port, 250)
+    await sleepAsync(20)
+    doAssert not request.finished,
+      "the request must still be waiting for its TCP connection"
+    let pendingSocket = client.getSocket()
+    doAssert pendingSocket != nil and not pendingSocket.isClosed,
+      "the HTTP client must already own its in-progress socket"
+    var connecting = false
+    try:
+      discard pendingSocket.getPeerAddr()
+    except OSError as err:
+      # getpeername fails with ENOTCONN until TCP connect completes.
+      doAssert err.errorCode.int == ENOTCONN.int, "unexpected socket error"
+      connecting = true
+    doAssert connecting, "the fixture must stall TCP connect, not HTTP headers"
+
     var timedOut = false
     try:
-      discard await client.getBounded("http://127.0.0.1:" & $port, 100)
+      discard await request
     except IOError as err:
       timedOut = "timed out" in err.msg
 

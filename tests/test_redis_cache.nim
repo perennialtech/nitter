@@ -11,16 +11,25 @@ proc testUserIdExpiry() {.async.} =
     prefix = "nitter_expiry_test_" & $getTime().toUnix & "_" & $getCurrentProcessId()
     cfg = Config(redisHost: "127.0.0.1", redisPort: port,
                  redisConns: 1, redisMaxConns: 2)
-  var keys: seq[string]
+    profileName = prefix & "_new"
+  var
+    keys: seq[string]
+    markers: seq[tuple[key, value: string; expiresAt: int64]]
 
   try:
     # Model an existing cache whose historical migrations have completed.
     # On fresh Redis, the old flatty migration would delete pid:* fixtures.
-    for marker in ["flatty", "snappyRss", "userBuckets", "profileDates",
-                   "profileStats", "userType", "verifiedType"]:
-      await conn.setk(marker, "true")
     # An obsolete completion marker must never suppress later reconciliation.
-    await conn.setk("pidExpiryV1", "true")
+    for marker in ["flatty", "snappyRss", "userBuckets", "profileDates",
+                   "profileStats", "userType", "verifiedType", "pidExpiryV1"]:
+      let
+        previousValue = await conn.get(marker)
+        previousTtl = int64(await conn.ttl(marker))
+        expiresAt = (if previousTtl > 0:
+                       getTime().toUnix + previousTtl
+                     else: previousTtl)
+      markers.add (marker, previousValue, expiresAt)
+      await conn.setk(marker, "true")
     # Existing installations may already have thousands of permanent hashes.
     # More than one SCAN batch must be visited to give all of them an expiry.
     for i in 0 ..< 800:
@@ -57,17 +66,27 @@ proc testUserIdExpiry() {.async.} =
       "reconciliation must not extend existing TTLs"
 
     let
-      name = prefix & "_new"
-      key = "pid:" & $(hash(name) div 1_000_000)
+      key = "pid:" & $(hash(profileName) div 1_000_000)
     keys.add key
-    await cache(User(id: "12345", username: name,
+    await cache(User(id: "12345", username: profileName,
                      joinDate: fromUnix(0).utc))
-    doAssert (await conn.hGet(key, name)) == "12345"
+    doAssert (await conn.hGet(key, profileName)) == "12345"
     doAssert (await conn.ttl(key)) > 0, "new user ID hashes must expire"
   finally:
-    for key in keys:
-      discard await conn.del(key)
-    await conn.close()
+    try:
+      for key in keys:
+        discard await conn.del(key)
+      discard await conn.del("p:" & profileName)
+      for marker in markers:
+        if marker.expiresAt == -2 or marker.expiresAt == 0 or
+           (marker.expiresAt > 0 and marker.expiresAt <= getTime().toUnix):
+          discard await conn.del(marker.key)
+        else:
+          await conn.setk(marker.key, marker.value)
+          if marker.expiresAt > 0:
+            discard await conn.expireAt(marker.key, int(marker.expiresAt))
+    finally:
+      await conn.close()
 
 suite "user ID Redis cache expiration":
   test "new and legacy ID mappings expire":
