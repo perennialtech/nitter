@@ -45,6 +45,7 @@ setDisableTid(cfg.disableTid)
 setMaxConcurrentReqs(cfg.maxConcurrentReqs)
 setMaxRetries(cfg.maxRetries)
 setRetryDelayMs(cfg.retryDelayMs)
+setApiTimeoutMs(cfg.apiTimeoutMs)
 initAboutPage(cfg.staticDir)
 
 waitFor initRedisPool(cfg)

@@ -40,6 +40,23 @@ proc migrate*(key, match: string) {.async.} =
       await r.setk(key, "true")
       dawait r.flushPipeline()
 
+proc expireLegacyUserIds() {.async.} =
+  # Older versions never expired pid:* hashes. Visit every batch rather than
+  # retaining their entire keyspace in memory during startup.
+  try:
+    let cursor = newCursor()
+    while true:
+      pool.withAcquire(r):
+        let keys = await r.scan(cursor, "pid:*", 500)
+        r.startPipelining()
+        for key in keys:
+          dawait r.expire(key, baseCacheTime)
+        dawait r.flushPipeline()
+      if cursor.position == 0:
+        break
+  except CatchableError:
+    echo "Unable to expire legacy user ID cache entries: ", getCurrentExceptionMsg()
+
 proc initRedisPool*(cfg: Config) {.async.} =
   try:
     pool = await newRedisPool(cfg.redisConns, cfg.redisMaxConns,
@@ -57,6 +74,8 @@ proc initRedisPool*(cfg: Config) {.async.} =
     pool.withAcquire(r):
       # optimize memory usage for user ID buckets
       await r.configSet("hash-max-ziplist-entries", "1000")
+
+    asyncCheck expireLegacyUserIds()
 
   except OSError:
     stdout.write "Failed to connect to Redis.\n"
@@ -81,6 +100,7 @@ proc cacheUserId(username, id: string) {.async.} =
   let name = toLower(username)
   pool.withAcquire(r):
     dawait r.hSet(name.uidKey, name, id)
+    dawait r.expire(name.uidKey, baseCacheTime)
 
 proc cache*(data: List) {.async.} =
   await setEx(data.listKey, listCacheTime, compress(toFlatty(data)))
@@ -118,13 +138,14 @@ proc getUserId*(username: string): Future[string] {.async.} =
   let name = toLower(username)
   pool.withAcquire(r):
     result = await r.hGet(name.uidKey, name)
-    if result == redisNil:
-      let user = await getGraphUser(username)
-      if user.suspended:
-        return "suspended"
-      else:
-        await all(cacheUserId(name, user.id), cache(user))
-        return user.id
+
+  if result == redisNil:
+    let user = await getGraphUser(username)
+    if user.suspended:
+      return "suspended"
+    else:
+      await all(cacheUserId(name, user.id), cache(user))
+      return user.id
 
 proc getCachedUser*(username: string; fetch=true): Future[User] {.async.} =
   let prof = await get("p:" & toLower(username))

@@ -30,6 +30,7 @@ var
   apiProxy: string
   maxRetries: int
   retryDelayMs: int
+  apiTimeoutMs: int = 15000
 
 proc setDisableTid*(disable: bool) =
   disableTid = disable
@@ -39,6 +40,9 @@ proc setMaxRetries*(n: int) =
 
 proc setRetryDelayMs*(ms: int) =
   retryDelayMs = ms
+
+proc setApiTimeoutMs*(ms: int) =
+  apiTimeoutMs = max(ms, 1000)
 
 proc setApiProxy*(url: string) =
   apiProxy = ""
@@ -132,12 +136,10 @@ template fetchImpl(result, fetchBody) {.dirty.} =
 
     useHttpClient(headers):
       template getContent =
-        # TODO: this is a temporary simple implementation
+        var target = $url
         if apiProxy.len > 0 and "/1.1/" notin url.path:
-          resp = await c.get(($url).replace("https://", apiProxy))
-        else:
-          resp = await c.get($url)
-        result = await resp.body
+          target = target.replace("https://", apiProxy)
+        (resp, result) = await c.getBounded(target, apiTimeoutMs)
 
       getContent()
 

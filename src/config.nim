@@ -51,7 +51,8 @@ proc getConfig*(path: string): (Config, parseCfg.Config) =
     disableTid: cfg.get("Config", "disableTid", false),
     maxConcurrentReqs: cfg.get("Config", "maxConcurrentReqs", 2),
     maxRetries: cfg.get("Config", "maxRetries", 1),
-    retryDelayMs: cfg.get("Config", "retryDelayMs", 150)
+    retryDelayMs: cfg.get("Config", "retryDelayMs", 150),
+    apiTimeoutMs: cfg.get("Config", "apiTimeoutMs", 15000)
   )
 
   return (conf, cfg)
