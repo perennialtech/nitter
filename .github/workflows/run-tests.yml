@@ -68,7 +68,9 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enable patched HTTP transport
-        run: bash tools/patch-nim-stdlib.sh
+        run: |
+          bash tools/patch-nim-stdlib.sh
+          bash tools/patch-nim-stdlib.sh
 
       - name: Build Project
         run: nimble build -Y
