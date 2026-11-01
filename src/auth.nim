@@ -295,6 +295,22 @@ proc getSession*(req: ApiReq): Future[Session] {.async.} =
       log "no sessions available for API: ", req.endpoint(result), ", last tried: ", result.pretty
     raise noSessionsError()
 
+proc selectCookieSession*(sessions: openArray[Session]; req: ApiReq): Session =
+  ## Grok translation requires a cookie session. Choosing from the complete
+  ## account pool can miss every cookie by chance, even when one is available.
+  for session in sessions:
+    if session.kind != cookie or session.pending >= maxConcurrentReqs or
+       session.isLimited(req):
+      continue
+    if result.isNil or session.pending < result.pending:
+      result = session
+  if result.isNil:
+    raise noSessionsError()
+  inc result.pending
+
+proc getCookieSession*(req: ApiReq): Session =
+  selectCookieSession(sessionPool, req)
+
 proc setLimited*(session: Session; req: ApiReq) =
   let api = req.endpoint(session)
   session.limited = true

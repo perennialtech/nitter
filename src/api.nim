@@ -28,14 +28,18 @@ proc cursorParam(after: string): string =
 proc mediaUrl(id, cursor: string): ApiReq =
   return apiReq(graphUserMedia, userMediaVars % [id, cursor, "100"])
 
-proc userTweetsUrl(id: string; cursor: string): ApiReq =
-  let endpoint = if isGuestAuth(): graphUserTweets else: graphUserTweetsOriginals
+proc userTweetsUrl*(id: string; cursor: string; rss = false): ApiReq =
+  # Existing /@user/rss subscribers expect the full tweet timeline, including
+  # reposts; the newer UI's originals-only endpoint must not change the feed.
+  let endpoint = if rss or isGuestAuth(): graphUserTweets else: graphUserTweetsOriginals
   return apiReq(endpoint, userTweetsVars % [id, cursor, "20"], userTweetsFieldToggles)
 
 proc userTweetsAndRepliesUrl(id: string; cursor: string): ApiReq =
   return apiReq(graphUserTweetsAndReplies, userTweetsAndRepliesVars % [id, cursor], userTweetsFieldToggles)
 
-proc userRepliesUrl(id: string; cursor: string): ApiReq =
+proc userRepliesUrl*(id: string; cursor: string; rss = false): ApiReq =
+  if rss:
+    return userTweetsAndRepliesUrl(id, cursor)
   return apiReq(graphUserReplies, userRepliesVars % [id, cursor], userRepliesFieldToggles)
 
 proc userArticlesUrl(id: string; cursor: string): ApiReq =
@@ -105,13 +109,14 @@ proc getAudioSpace*(id: string): Future[AudioSpace] {.async.} =
     js = await fetch(req)
   result = parseAudioSpace(js)
 
-proc getGraphUserTweets*(id: string; kind: TimelineKind; after=""): Future[Profile] {.async.} =
+proc getGraphUserTweets*(id: string; kind: TimelineKind; after="";
+                         rss = false): Future[Profile] {.async.} =
   if id.len == 0: return
   let
     cursor = cursorParam(after)
     url = case kind
-      of TimelineKind.tweets: userTweetsUrl(id, cursor)
-      of TimelineKind.replies: userRepliesUrl(id, cursor)
+      of TimelineKind.tweets: userTweetsUrl(id, cursor, rss)
+      of TimelineKind.replies: userRepliesUrl(id, cursor, rss)
       of TimelineKind.media: mediaUrl(id, cursor)
       of TimelineKind.articles: userArticlesUrl(id, cursor)
       of TimelineKind.reposts: userRepostsUrl(id, cursor)
@@ -260,9 +265,11 @@ type
 
 const
   onDemandCacheTtl = 3600
+  onDemandFailureTtl = 60
   onDemandCacheMax = 500
 
 var onDemandCache: Table[string, OnDemandTrans]
+var onDemandPending: Table[string, Future[bool]]
 
 proc parseGrokTranslation(body: string): tuple[text, lang: string; links: seq[GrokLink]] =
   for line in body.splitLines:
@@ -300,7 +307,8 @@ proc cacheOnDemand(key, text, lang: string) =
 proc cachedOnDemand(key: string; found: var OnDemandTrans): bool =
   if key notin onDemandCache: return
   found = onDemandCache[key]
-  if epochTime().int - found.at > onDemandCacheTtl:
+  let ttl = if found.text.len > 0: onDemandCacheTtl else: onDemandFailureTtl
+  if epochTime().int - found.at > ttl:
     onDemandCache.del key
     return
   result = true
@@ -388,22 +396,45 @@ proc translateTweet*(tweet: Tweet) {.async.} =
   except CatchableError:
     echo "Translation fetch failed for ", tweet.id, ": ", getCurrentExceptionMsg()
 
-proc translateOnDemand*(id: string; note = false): Future[bool] {.async.} =
-  if not onDemandTranslation() or id.len == 0: return
+type TranslationPoster* = proc(id, language, contentType: string): Future[string] {.closure.}
+
+proc translateUncached(id, key: string; note: bool;
+                       post: TranslationPoster): Future[bool] {.async.} =
   try:
     let
-      body = await postGrokTranslation(id, onDemandTranslationLang(),
-                                       if note: "COMMUNITY_NOTE" else: "POST")
+      body = await post(id, onDemandTranslationLang(),
+                        if note: "COMMUNITY_NOTE" else: "POST")
       parsed = body.parseGrokTranslation
     result = parsed.text.len > 0
     if result:
-      cacheOnDemand((if note: "n" & id else: id),
-                    expandGrokTranslation(parsed.text, parsed.links), parsed.lang)
+      cacheOnDemand(key, expandGrokTranslation(parsed.text, parsed.links), parsed.lang)
     elif body.len > 0:
       echo "[translation] no translated text in grok response for ", id, ": ",
            body[0 ..< min(body.len, 300)]
   except CatchableError:
     echo "[translation] on-demand translation failed for ", id, ": ", getCurrentExceptionMsg()
+  if not result:
+    # Cache failures briefly too, to avoid repeated public requests to an
+    # unavailable or rate-limited upstream endpoint.
+    cacheOnDemand(key, "", "")
+
+proc translateOnDemand*(id: string; note = false;
+                        post: TranslationPoster = postGrokTranslation): Future[bool] {.async.} =
+  if not onDemandTranslation() or id.len == 0: return
+  let key = (if note: "n" & id else: id)
+  var cached: OnDemandTrans
+  if cachedOnDemand(key, cached):
+    return cached.text.len > 0
+  if key in onDemandPending:
+    return await onDemandPending[key]
+
+  # Coalesce simultaneous requests for the same post or community note.
+  let pending = translateUncached(id, key, note, post)
+  onDemandPending[key] = pending
+  try:
+    return await pending
+  finally:
+    onDemandPending.del(key)
 
 proc getGraphTweet(id: string; after=""; mode = Relevance): Future[Conversation] {.async.} =
   if id.len == 0: return

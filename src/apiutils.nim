@@ -36,6 +36,7 @@ var
   translationEnabled: bool = true
   onDemandTransEnabled: bool
   onDemandTransLang = "en"
+  guestActivation: Future[Session]
 
 const guestActivateUrl = "https://api.x.com/1.1/guest/activate.json"
 
@@ -180,8 +181,7 @@ proc genHeaders*(session: Session, url: Uri, skipTid: bool): Future[HttpHeaders]
 proc activateGuestToken(): Future[Session] {.async.} =
   ## POST to the guest activation endpoint and wrap the returned token in a
   ## fresh guest Session, ready to be added to the pool
-  let client = newAsyncHttpClient()
-  client.headers = newHttpHeaders({
+  let headers = newHttpHeaders({
     "authorization": guestBearerToken,
     "content-type": "application/x-www-form-urlencoded",
     "accept": "*/*",
@@ -198,45 +198,66 @@ proc activateGuestToken(): Future[Session] {.async.} =
     "x-twitter-active-user": "yes",
     "x-twitter-client-language": "en"
   })
-  try:
-    let
-      resp = await client.post(guestActivateUrl)
-      body = await resp.body
+  useHttpClient(headers):
+    let (resp, body) = await c.postBounded(guestActivateUrl, "", apiTimeoutMs)
 
     if resp.status != $Http200:
-      echo "[sessions] guest activation failed, status: ", resp.status, ", body: ", body
+      echo "[sessions] guest activation failed, status: ", resp.status
       raise rateLimitError()
 
     let js = parseJson(body)
     if not js.hasKey("guest_token"):
-      echo "[sessions] guest activation returned no token, body: ", body
+      echo "[sessions] guest activation returned no token"
       raise rateLimitError()
     let token = js["guest_token"].getStr
 
     if token.len == 0:
-      echo "[sessions] guest activation returned an empty token, body: ", body
+      echo "[sessions] guest activation returned an empty token"
       raise rateLimitError()
 
     echo "[sessions] activated new guest token"
     result = Session(kind: guest, guestToken: token, guestCreated: epochTime().int, guestReqs: 0)
-  finally:
-    client.close()
 
-proc getReadyGuestSession(req: ApiReq): Future[Session] {.async.} =
+type GuestActivator* = proc(): Future[Session] {.closure.}
+
+proc getReadyGuestSession*(req: ApiReq;
+                           activate: GuestActivator = activateGuestToken): Future[Session] {.async.} =
   result = getGuestSession(req)
-  if result.isNil:
-    var stale = findStaleGuestSession(req)
-    if not stale.isNil:
-      invalidate(stale)
+  if not result.isNil: return
 
-    if guestPoolFull():
-      await sleepAsync(200)
+  # An activation is shared by concurrent requests. Without this gate each
+  # request can observe an empty pool and create another token before the
+  # preceding activation completes.
+  if guestActivation != nil:
+    try:
+      discard await guestActivation
+    except CatchableError:
       raise rateLimitError()
-    else:
-      let fresh = await activateGuestToken()
+    result = getGuestSession(req)
+    if result.isNil:
+      raise rateLimitError()
+    return
+
+  var stale = findStaleGuestSession(req)
+  if not stale.isNil and stale.pending == 0:
+    invalidate(stale)
+
+  if guestPoolFull():
+    await sleepAsync(200)
+    raise rateLimitError()
+
+  let activation = activate()
+  guestActivation = activation
+  try:
+    try:
+      let fresh = await activation
       addGuestSession(fresh)
       inc fresh.pending
       result = fresh
+    except CatchableError:
+      raise rateLimitError()
+  finally:
+    guestActivation = nil
 
 proc getAndValidateSession*(req: ApiReq): Future[Session] {.async.} =
   if useGuestAuth:
@@ -416,15 +437,7 @@ proc postGrokTranslation*(id, dstLang: string; contentType = "POST"): Future[str
     oauth: ApiUrl(endpoint: "2/grok/translation.json", skipTid: true)
   )
 
-  var session: Session
-  for i in 0 ..< 5:
-    session = await getAndValidateSession(req)
-    if session.kind == SessionKind.cookie: break
-    release(session)
-    session = nil
-
-  if session.isNil:
-    raise newException(InternalError, "translation requires a cookie session")
+  let session = getCookieSession(req)
 
   try:
     var headers = await genHeaders(session, parseUri(grokTranslationUrl), true)

@@ -49,7 +49,8 @@ template skipIf[T](cond: bool; default; body: Future[T]): Future[T] =
   else:
     body
 
-proc fetchProfile*(after: string; query: Query; prefs: Prefs; skipRail=false): Future[Profile] {.async.} =
+proc fetchProfile*(after: string; query: Query; prefs: Prefs;
+                   skipRail=false; rss=false): Future[Profile] {.async.} =
   let
     name = query.fromUser[0]
     userId = await getUserId(name)
@@ -79,12 +80,12 @@ proc fetchProfile*(after: string; query: Query; prefs: Prefs; skipRail=false): F
       if isGuestAuth() and prefs.guestSearchFallback:
         Profile(tweets: await getGraphTweetSearch(query, after))
       else:
-        await getGraphUserTweets(userId, TimelineKind.tweets, after)
+        await getGraphUserTweets(userId, TimelineKind.tweets, after, rss)
     of replies:
       if isGuestAuth():
         Profile(tweets: await getGraphTweetSearch(query, after))
       else:
-        await getGraphUserTweets(userId, TimelineKind.replies, after)
+        await getGraphUserTweets(userId, TimelineKind.replies, after, rss)
     of media: await getGraphUserTweets(userId, TimelineKind.media, after)
     of QueryKind.articles:
       if isGuestAuth():
