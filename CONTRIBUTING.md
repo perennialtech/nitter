@@ -5,6 +5,7 @@ Install Nim 2.2.12 or newer, libsass, and libpcre as described in the
 
 ```bash
 nimble install -y --depsOnly
+bash tools/patch-nim-stdlib.sh
 nimble build -Y
 nimble scss
 nimble md

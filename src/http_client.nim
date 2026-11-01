@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[httpclient, strutils, uri, asyncnet]
+import std/[asyncdispatch, httpclient, strutils, uri, asyncnet]
 import types
+
+when not declared(nitterAsyncSocketOwnershipPatched):
+  {.error: "Apply tools/nim-httpclient-backpressure.patch to Nim before compiling Nitter".}
 
 var proxy: Proxy
 
@@ -22,8 +25,25 @@ proc closeClient(client: AsyncHttpClient) =
   # connection as established. Its close() only closes connected sockets.
   client.close()
   let socket = client.getSocket()
-  if socket != nil:
+  if socket != nil and not socket.isClosed:
     socket.close()
+
+proc getBounded*(client: AsyncHttpClient; url: string;
+                 timeoutMs: int): Future[(AsyncResponse, string)] {.async.} =
+  # withTimeout does not cancel its future. Close the socket on timeout so a
+  # stalled response cannot retain its async reader or a session indefinitely.
+  let headers = client.get(url)
+  if not await withTimeout(headers, timeoutMs):
+    closeClient(client)
+    raise newException(IOError, "Upstream API response headers timed out")
+
+  let response = headers.read()
+  let body = response.body
+  if not await withTimeout(body, timeoutMs):
+    closeClient(client)
+    raise newException(IOError, "Upstream API response body timed out")
+
+  result = (response, body.read())
 
 template useHttpClient*(heads: HttpHeaders; body: untyped): untyped =
   bind BadClientError, ProtocolError, closeClient

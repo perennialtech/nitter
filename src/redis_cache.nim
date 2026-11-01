@@ -40,6 +40,36 @@ proc migrate*(key, match: string) {.async.} =
       await r.setk(key, "true")
       dawait r.flushPipeline()
 
+proc expireLegacyUserIdsOnce*() {.async.} =
+  # A previous version or another running instance can still create pid:*
+  # hashes without TTLs. Recheck on each pass without extending valid TTLs.
+  let cursor = newCursor()
+  while true:
+    let r = await pool.acquire()
+    var dropConnection = false
+    try:
+      let keys = await r.scan(cursor, "pid:*", 500)
+      for key in keys:
+        if (await r.ttl(key)) == -1:
+          discard await r.expire(key, baseCacheTime)
+    except CatchableError:
+      # Do not return a connection with an interrupted response to the pool.
+      dropConnection = true
+      raise
+    finally:
+      await pool.release(r, dropConnection)
+    if cursor.position == 0:
+      break
+
+proc expireLegacyUserIds() {.async.} =
+  while true:
+    try:
+      await expireLegacyUserIdsOnce()
+    except CatchableError:
+      echo "Unable to expire legacy user ID cache entries: ", getCurrentExceptionMsg()
+    # Reconcile writes from older Nitter instances during rolling upgrades.
+    await sleepAsync(baseCacheTime * 1000)
+
 proc initRedisPool*(cfg: Config) {.async.} =
   try:
     pool = await newRedisPool(cfg.redisConns, cfg.redisMaxConns,
@@ -57,6 +87,8 @@ proc initRedisPool*(cfg: Config) {.async.} =
     pool.withAcquire(r):
       # optimize memory usage for user ID buckets
       await r.configSet("hash-max-ziplist-entries", "1000")
+
+    asyncCheck expireLegacyUserIds()
 
   except OSError:
     stdout.write "Failed to connect to Redis.\n"
@@ -80,7 +112,11 @@ proc cacheUserId(username, id: string) {.async.} =
   if username.len == 0 or id.len == 0: return
   let name = toLower(username)
   pool.withAcquire(r):
+    # An interrupted write must never leave a permanent pid:* hash behind.
+    await r.multi()
     dawait r.hSet(name.uidKey, name, id)
+    dawait r.expire(name.uidKey, baseCacheTime)
+    dawait r.exec()
 
 proc cache*(data: List) {.async.} =
   await setEx(data.listKey, listCacheTime, compress(toFlatty(data)))
@@ -118,13 +154,14 @@ proc getUserId*(username: string): Future[string] {.async.} =
   let name = toLower(username)
   pool.withAcquire(r):
     result = await r.hGet(name.uidKey, name)
-    if result == redisNil:
-      let user = await getGraphUser(username)
-      if user.suspended:
-        return "suspended"
-      else:
-        await all(cacheUserId(name, user.id), cache(user))
-        return user.id
+
+  if result == redisNil:
+    let user = await getGraphUser(username)
+    if user.suspended:
+      return "suspended"
+    else:
+      await all(cacheUserId(name, user.id), cache(user))
+      return user.id
 
 proc getCachedUser*(username: string; fetch=true): Future[User] {.async.} =
   let prof = await get("p:" & toLower(username))

@@ -32,6 +32,11 @@ jobs:
   build-test:
     name: Build and test
     runs-on: ubuntu-24.04
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
     strategy:
       matrix:
         nim: ["2.2.12", "devel"]
@@ -62,11 +67,8 @@ jobs:
           use-nightlies: ${{ matrix.nim == 'devel' }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable media download backpressure
-        run: |
-          nim_lib="$(dirname "$(dirname "$(readlink -f "$(command -v nim)")")")/lib"
-          patch --batch --forward -p1 -d "$nim_lib" \
-            < tools/nim-httpclient-backpressure.patch
+      - name: Enable patched HTTP transport
+        run: bash tools/patch-nim-stdlib.sh
 
       - name: Build Project
         run: nimble build -Y
@@ -81,6 +83,8 @@ jobs:
           nim r tests/test_ssrf_1411.nim
           nim r tests/test_formatters.nim
           nim r tests/test_timeline.nim
+          nim r tests/test_redis_cache.nim
+          nim r tests/test_http_client_timeout.nim
 
       - name: Test HTTP and HTTPS CONNECT proxies
         run: python3 tests/test_http_proxy.py -v
@@ -132,6 +136,7 @@ jobs:
           NITTER_TEST_URL=http://127.0.0.1:8080 NITTER_TEST_PID="$server_pid" \
             python3 -m unittest discover -s tests -p test_media_socket_cleanup.py -v \
             || { cat nitter.log; exit 1; }
+          python3 tests/test_api_resource_cleanup.py -v
 
   integration-test:
     needs: [build-test, integration-config]

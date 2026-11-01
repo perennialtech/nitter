@@ -442,6 +442,7 @@ type
     maxConcurrentReqs*: int
     maxRetries*: int
     retryDelayMs*: int
+    apiTimeoutMs*: int
 
     rssCacheTime*: int
     listCacheTime*: int
