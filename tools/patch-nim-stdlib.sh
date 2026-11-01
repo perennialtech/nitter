@@ -17,6 +17,12 @@ connect=$(grep -Fc 'await client.socket.connect(connectionUrl.hostname, port)' "
 dispatch=$(grep -Fc 'closeSocket invokes pending callbacks after closing the descriptor.' "$asyncdispatch" || true)
 
 if (( marker == 1 && progress == 1 && connect == 1 && dispatch == 1 )); then
+  # Check every added and removed line, not just the identifying signatures.
+  if ! patch --dry-run --reverse --force --fuzz=0 -p1 -d "$nim_lib" \
+    < "$patch_file" >/dev/null 2>&1; then
+    echo "Nim HTTP transport patch is incomplete or modified" >&2
+    exit 1
+  fi
   echo "Nim HTTP transport patch is already applied"
 elif (( marker + progress + connect + dispatch > 0 )); then
   echo "Nim HTTP transport patch is only partially applied" >&2

@@ -14,24 +14,22 @@ proc testUserIdExpiry() {.async.} =
     profileName = prefix & "_new"
   var
     keys: seq[string]
-    markers: seq[tuple[key, value: string; ttl: int]]
+    markers: seq[tuple[key, value: string; expiresAt: int64]]
 
   try:
     # Model an existing cache whose historical migrations have completed.
     # On fresh Redis, the old flatty migration would delete pid:* fixtures.
+    # An obsolete completion marker must never suppress later reconciliation.
     for marker in ["flatty", "snappyRss", "userBuckets", "profileDates",
-                   "profileStats", "userType", "verifiedType"]:
+                   "profileStats", "userType", "verifiedType", "pidExpiryV1"]:
       let
         previousValue = await conn.get(marker)
-        previousTtl = int(await conn.ttl(marker))
-      markers.add (marker, previousValue, previousTtl)
+        previousTtl = int64(await conn.ttl(marker))
+        expiresAt = (if previousTtl > 0:
+                       getTime().toUnix + previousTtl
+                     else: previousTtl)
+      markers.add (marker, previousValue, expiresAt)
       await conn.setk(marker, "true")
-    # An obsolete completion marker must never suppress later reconciliation.
-    let
-      previousMarker = await conn.get("pidExpiryV1")
-      previousMarkerTtl = int(await conn.ttl("pidExpiryV1"))
-    markers.add ("pidExpiryV1", previousMarker, previousMarkerTtl)
-    await conn.setk("pidExpiryV1", "true")
     # Existing installations may already have thousands of permanent hashes.
     # More than one SCAN batch must be visited to give all of them an expiry.
     for i in 0 ..< 800:
@@ -80,12 +78,13 @@ proc testUserIdExpiry() {.async.} =
         discard await conn.del(key)
       discard await conn.del("p:" & profileName)
       for marker in markers:
-        if marker.ttl < -1 or marker.ttl == 0:
+        if marker.expiresAt == -2 or marker.expiresAt == 0 or
+           (marker.expiresAt > 0 and marker.expiresAt <= getTime().toUnix):
           discard await conn.del(marker.key)
         else:
           await conn.setk(marker.key, marker.value)
-          if marker.ttl > 0:
-            discard await conn.expire(marker.key, marker.ttl)
+          if marker.expiresAt > 0:
+            discard await conn.expireAt(marker.key, int(marker.expiresAt))
     finally:
       await conn.close()
 

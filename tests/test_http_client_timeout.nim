@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, asyncnet, httpclient, net, strutils, unittest]
+import std/[asyncdispatch, asyncnet, httpclient, net, posix, strutils, unittest]
 import ../src/http_client
 
 proc serveOnce(listener: AsyncSocket; mode: string) {.async.} =
@@ -74,8 +74,9 @@ proc checkConnectingTimeout() {.async.} =
     var connecting = false
     try:
       discard pendingSocket.getPeerAddr()
-    except OSError:
+    except OSError as err:
       # getpeername fails with ENOTCONN until TCP connect completes.
+      doAssert err.errorCode.int == ENOTCONN.int, "unexpected socket error"
       connecting = true
     doAssert connecting, "the fixture must stall TCP connect, not HTTP headers"
 
