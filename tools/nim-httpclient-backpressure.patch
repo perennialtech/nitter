@@ -1,5 +1,9 @@
 --- a/pure/httpclient.nim
 +++ b/pure/httpclient.nim
+@@ -283,1 +283,3 @@
++const nitterAsyncSocketOwnershipPatched* = true
++
+ type
 @@ -754,7 +754,9 @@
    client.oneSecondProgress += progress
 -  if (getMonoTime() - client.lastProgressReport).inSeconds >= 1:

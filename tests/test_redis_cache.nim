@@ -14,8 +14,13 @@ proc testUserIdExpiry() {.async.} =
   var keys: seq[string]
 
   try:
-    # Simulate the first upgraded startup, even on a reused local test Redis.
-    discard await conn.del("pidExpiryV1")
+    # Model an existing cache whose historical migrations have completed.
+    # On fresh Redis, the old flatty migration would delete pid:* fixtures.
+    for marker in ["flatty", "snappyRss", "userBuckets", "profileDates",
+                   "profileStats", "userType", "verifiedType"]:
+      await conn.setk(marker, "true")
+    # An obsolete completion marker must never suppress later reconciliation.
+    await conn.setk("pidExpiryV1", "true")
     # Existing installations may already have thousands of permanent hashes.
     # More than one SCAN batch must be visited to give all of them an expiry.
     for i in 0 ..< 800:
@@ -39,7 +44,17 @@ proc testUserIdExpiry() {.async.} =
         break
       await sleepAsync(10)
     doAssert expired, "legacy user ID hashes must acquire a TTL"
-    doAssert (await conn.get("pidExpiryV1")) != "\0\0"
+    # Running a second pass must retain existing TTLs and catch late writes.
+    discard await conn.expire(keys[0], 20)
+    let lateName = prefix & "_late"
+    let lateKey = "pid:" & $(hash(lateName) div 1_000_000)
+    keys.add lateKey
+    discard await conn.hSet(lateKey, lateName, "late")
+    doAssert (await conn.ttl(lateKey)) == -1
+    await expireLegacyUserIdsOnce()
+    doAssert (await conn.ttl(lateKey)) > 0
+    doAssert (await conn.ttl(keys[0])) <= 20,
+      "reconciliation must not extend existing TTLs"
 
     let
       name = prefix & "_new"

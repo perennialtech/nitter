@@ -110,6 +110,7 @@ along with the scss and md files.
 # su nitter
 $ git clone https://github.com/perennialtech/nitter
 $ cd nitter
+$ bash tools/patch-nim-stdlib.sh
 $ nimble -l build -d:danger --mm:refc
 $ nimble -l scss
 $ nimble -l md

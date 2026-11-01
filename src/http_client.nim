@@ -2,6 +2,9 @@
 import std/[asyncdispatch, httpclient, strutils, uri, asyncnet]
 import types
 
+when not declared(nitterAsyncSocketOwnershipPatched):
+  {.error: "Apply tools/nim-httpclient-backpressure.patch to Nim before compiling Nitter".}
+
 var proxy: Proxy
 
 proc setHttpProxy*(url: string; auth: string) =

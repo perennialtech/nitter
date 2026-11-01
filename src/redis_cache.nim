@@ -7,7 +7,6 @@ import types, api
 const
   redisNil = "\0\0"
   baseCacheTime = 60 * 60
-  userIdExpiryMigration = "pidExpiryV1"
 
 var
   pool: RedisPool
@@ -41,38 +40,35 @@ proc migrate*(key, match: string) {.async.} =
       await r.setk(key, "true")
       dawait r.flushPipeline()
 
-proc expireLegacyUserIds() {.async.} =
-  # Older versions never expired pid:* hashes. Migrate once, scanning in
-  # batches so the complete Redis keyspace is never held in Nitter's heap.
-  try:
-    let cursor = newCursor()
-    var firstBatch = true
-    while true:
-      let r = await pool.acquire()
-      var dropConnection = false
-      try:
-        if firstBatch:
-          if (await r.get(userIdExpiryMigration)) != redisNil:
-            return
-          firstBatch = false
+proc expireLegacyUserIdsOnce*() {.async.} =
+  # A previous version or another running instance can still create pid:*
+  # hashes without TTLs. Recheck on each pass without extending valid TTLs.
+  let cursor = newCursor()
+  while true:
+    let r = await pool.acquire()
+    var dropConnection = false
+    try:
+      let keys = await r.scan(cursor, "pid:*", 500)
+      for key in keys:
+        if (await r.ttl(key)) == -1:
+          discard await r.expire(key, baseCacheTime)
+    except CatchableError:
+      # Do not return a connection with an interrupted response to the pool.
+      dropConnection = true
+      raise
+    finally:
+      await pool.release(r, dropConnection)
+    if cursor.position == 0:
+      break
 
-        let keys = await r.scan(cursor, "pid:*", 500)
-        r.startPipelining()
-        for key in keys:
-          dawait r.expire(key, baseCacheTime)
-        dawait r.flushPipeline()
-        if cursor.position == 0:
-          await r.setk(userIdExpiryMigration, "true")
-      except CatchableError:
-        # Do not reuse a connection whose pipeline may be interrupted.
-        dropConnection = true
-        raise
-      finally:
-        await pool.release(r, dropConnection)
-      if cursor.position == 0:
-        break
-  except CatchableError:
-    echo "Unable to expire legacy user ID cache entries: ", getCurrentExceptionMsg()
+proc expireLegacyUserIds() {.async.} =
+  while true:
+    try:
+      await expireLegacyUserIdsOnce()
+    except CatchableError:
+      echo "Unable to expire legacy user ID cache entries: ", getCurrentExceptionMsg()
+    # Reconcile writes from older Nitter instances during rolling upgrades.
+    await sleepAsync(baseCacheTime * 1000)
 
 proc initRedisPool*(cfg: Config) {.async.} =
   try:
