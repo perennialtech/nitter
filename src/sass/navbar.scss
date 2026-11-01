@@ -13,7 +13,7 @@ nav {
 
   a,
   .icon-button button {
-    color: var(--fg_nav);
+    color: var(--fg_nav) !important;
   }
 
   body.fixed-nav & {
@@ -37,7 +37,7 @@ nav {
   line-height: 1;
 
   &:hover {
-    color: var(--accent_light);
+    color: var(--accent_light) !important;
     text-decoration: unset;
   }
 }
@@ -63,7 +63,7 @@ nav {
   }
 
   &.right a:hover {
-    color: var(--accent_light);
+    color: var(--accent_light) !important;
     text-decoration: unset;
   }
 }

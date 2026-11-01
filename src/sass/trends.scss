@@ -1,0 +1,82 @@
+@import "_variables";
+
+.home-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin: 100px auto 0 auto;
+}
+
+.home-panel .panel-container {
+  margin: 0 auto;
+}
+
+.trends-panel {
+  max-width: 600px;
+  margin-top: 2em;
+  text-align: center;
+}
+
+.trends-tab-radio {
+  display: none;
+}
+
+.trends-tab-labels {
+  display: flex;
+  background-color: var(--darkest_grey);
+  color: var(--tab);
+  border-radius: 4px;
+  border-bottom: 1px solid var(--border_grey);
+  margin-bottom: 0.5em;
+}
+
+.trends-tab-label {
+  flex: 1;
+  padding: 0.4em 0.8em;
+  cursor: pointer;
+  opacity: 0.6;
+  font-weight: 500;
+  text-align: center;
+}
+
+.trends-tab-panel {
+  display: none;
+}
+
+.trends-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.trend-item {
+  padding: 0.2em 0;
+}
+
+.trend-item a {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+}
+
+.trend-volume {
+  color: var(--fg_faded, #888);
+  font-size: 0.85em;
+}
+
+.trends-empty {
+  opacity: 0.6;
+  padding: 0.3em 0;
+}
+
+#trends-tab-1:checked ~ .trends-tab-panel#trends-panel-1,
+#trends-tab-2:checked ~ .trends-tab-panel#trends-panel-2 {
+  display: block;
+}
+
+#trends-tab-1:checked ~ .trends-tab-labels label[for="trends-tab-1"],
+#trends-tab-2:checked ~ .trends-tab-labels label[for="trends-tab-2"] {
+  opacity: 1;
+  border-bottom: 0.1em solid var(--accent);
+}

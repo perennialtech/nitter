@@ -4,7 +4,7 @@ import strutils
 import jester
 
 import router_utils
-import ".."/[types, api]
+import ".."/[types, api, utils]
 import ../views/general
 
 template respResolved*(url, kind: string): untyped =
@@ -12,7 +12,7 @@ template respResolved*(url, kind: string): untyped =
   if u.len == 0:
     resp showError("Invalid $1 link" % kind, cfg)
   else:
-    redirect(u)
+    redirect(u.localizeTwitterLink)
 
 proc createResolverRouter*(cfg: Config) =
   router resolver:

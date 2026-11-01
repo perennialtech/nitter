@@ -69,6 +69,12 @@ genPrefs:
     hideTweetStats(checkbox, false):
       "Hide tweet stats (replies, retweets, likes)"
 
+    hideTweetSource(checkbox, false):
+      "Hide tweet source (iPhone, Android, etc.)"
+
+    abbreviateStats(checkbox, false):
+      "Abbreviate tweet stats (1.2M instead of 1,200,000)"
+
     hideBanner(checkbox, false):
       "Hide profile banner"
 
@@ -84,8 +90,17 @@ genPrefs:
     hideCommunityNotes(checkbox, false):
       "Hide community notes"
 
+    autoTranslate(checkbox, false):
+      "Auto translate tweets if available"
+
+    # Disabled 2026-10-28: X retired the v2 /2/timeline/conversation endpoint
+    #   "Restore focal tweet source label"
+
     squareAvatars(checkbox, false):
       "Square profile pictures"
+
+    guestSearchFallback(checkbox, true):
+      "Use search for timelines as guest (turn off for shadowbanned accounts)"
 
   Media:
     mp4Playback(checkbox, true):

@@ -41,6 +41,13 @@ template verifiedIcon*(user: User): untyped {.dirty.} =
   else:
     text ""
 
+template profileLabel*(user: User): untyped {.dirty.} =
+  if user.parodyLabel.len > 0:
+    buildHtml(tdiv(class="profile-label")):
+      icon("theater", user.parodyLabel & " account")
+  else:
+    text ""
+
 proc linkUser*(user: User, class=""): VNode =
   let
     isName = "username" notin class

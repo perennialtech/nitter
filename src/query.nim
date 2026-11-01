@@ -29,8 +29,8 @@ proc initQuery*(pms: Table[string, string]; name=""): Query =
     minLikes: validateNumber(@"min_faves")
   )
 
-  # articles is an internal tab kind, not a valid search filter
-  if result.kind == QueryKind.articles:
+  # articles/reposts are internal tab kinds, not valid search filters
+  if result.kind in {QueryKind.articles, QueryKind.reposts}:
     result.kind = tweets
 
   if name.len > 0:
@@ -53,6 +53,12 @@ proc getArticlesQuery*(name: string): Query =
 proc getReplyQuery*(name: string): Query =
   Query(
     kind: replies,
+    fromUser: @[name]
+  )
+
+proc getRepostsQuery*(name: string): Query =
+  Query(
+    kind: QueryKind.reposts,
     fromUser: @[name]
   )
 

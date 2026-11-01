@@ -94,6 +94,7 @@ proc renderUser(user: User; prefs: Prefs): VNode =
             linkUser(user, class="fullname")
             verifiedIcon(user)
         linkUser(user, class="username")
+        profileLabel(user)
 
       tdiv(class="tweet-content media-body", dir="auto"):
         verbatim replaceUrls(user.bio, prefs)

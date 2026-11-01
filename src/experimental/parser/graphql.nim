@@ -52,6 +52,11 @@ proc parseUserResult*(userResult: UserResult): User =
       result.bio = bio.description
       result.expandUserEntities(bio.entities)
 
+  # "Parody", "Commentary" or "Fan"; "None" (or missing) when not flagged
+  let label = userResult.parodyCommentaryFanLabel
+  if label.len > 0 and label.toLowerAscii != "none":
+    result.parodyLabel = label
+
 proc parseGraphUser*(json: string): User =
   if json.len == 0 or json[0] != '{':
     return

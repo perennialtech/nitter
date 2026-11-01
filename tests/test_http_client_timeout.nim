@@ -2,9 +2,10 @@
 import std/[asyncdispatch, asyncnet, httpclient, net, posix, strutils, unittest]
 import ../src/http_client
 
-proc serveOnce(listener: AsyncSocket; mode: string) {.async.} =
+proc serveOnce(listener: AsyncSocket; mode, verb: string) {.async.} =
   let peer = await listener.accept()
   try:
+    doAssert (await peer.recvLine()).startsWith(verb & " /test ")
     while true:
       let line = await peer.recvLine()
       if line.strip().len == 0:
@@ -20,25 +21,29 @@ proc serveOnce(listener: AsyncSocket; mode: string) {.async.} =
   finally:
     peer.close()
 
-proc checkBoundedRequest(mode: string) {.async.} =
+proc checkBoundedRequest(mode: string; verb = "GET") {.async.} =
   let listener = newAsyncSocket()
   listener.bindAddr(Port(0), "127.0.0.1")
   listener.listen()
   let (_, port) = listener.getLocalAddr()
   let
-    server = serveOnce(listener, mode)
+    server = serveOnce(listener, mode, verb)
     client = newAsyncHttpClient()
     url = "http://127.0.0.1:" & $port & "/test"
 
   try:
+    let request = if verb == "POST":
+                    client.postBounded(url, "payload", 100)
+                  else:
+                    client.getBounded(url, 100)
     if mode == "complete":
-      let (response, body) = await client.getBounded(url, 100)
+      let (response, body) = await request
       doAssert response.code == Http200
       doAssert body == "ok"
     else:
       var timedOut = false
       try:
-        discard await client.getBounded(url, 100)
+        discard await request
       except IOError as err:
         timedOut = "timed out" in err.msg
       doAssert timedOut, "a stalled " & mode & " must time out"
@@ -104,5 +109,11 @@ suite "bounded upstream HTTP operations":
     waitFor checkBoundedRequest("body")
   test "complete responses retain normal behaviour":
     waitFor checkBoundedRequest("complete")
+  test "POST stalled response headers close the socket":
+    waitFor checkBoundedRequest("headers", "POST")
+  test "POST stalled response bodies close the socket":
+    waitFor checkBoundedRequest("body", "POST")
+  test "POST complete responses retain normal behaviour":
+    waitFor checkBoundedRequest("complete", "POST")
   test "pending TCP connection closes on timeout":
     waitFor checkConnectingTimeout()

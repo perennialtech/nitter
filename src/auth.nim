@@ -3,10 +3,15 @@ import std/[asyncdispatch, times, json, random, strutils, tables, packedsets, os
 import types, consts
 import experimental/parser/session
 
-const hourInSeconds = 60 * 60
+const
+  hourInSeconds = 60 * 60
+  guestMaxReqs* = 50
+  guestMaxAgeSeconds* = 2 * hourInSeconds
 
 var
   sessionPool: seq[Session]
+  guestPool: seq[Session]
+  guestPoolSize = 1
   enableLogging = false
   # max requests at a time per session to avoid race conditions
   maxConcurrentReqs = 2
@@ -15,19 +20,25 @@ proc setMaxConcurrentReqs*(reqs: int) =
   if reqs > 0:
     maxConcurrentReqs = reqs
 
+proc setGuestPoolSize*(size: int) =
+  if size > 0:
+    guestPoolSize = size
+
 template log(str: varargs[string, `$`]) =
   echo "[sessions] ", str.join("")
 
 proc endpoint*(req: ApiReq; session: Session): string =
   case session.kind
   of oauth: req.oauth.endpoint
-  of cookie: req.cookie.endpoint
+  of cookie, guest: req.cookie.endpoint
 
 proc pretty*(session: Session): string =
   if session.isNil:
     return "<null>"
 
-  if session.id > 0 and session.username.len > 0:
+  if session.kind == guest:
+    return "guest"
+  elif session.id > 0 and session.username.len > 0:
     result = $session.id & " (" & session.username & ")"
   elif session.username.len > 0:
     result = session.username
@@ -39,6 +50,12 @@ proc pretty*(session: Session): string =
 
 proc snowflakeToEpoch(flake: int64): int64 =
   int64(((flake shr 22) + 1288834974657) div 1000)
+
+proc needsRotation*(session: Session): bool =
+  if session.isNil or session.kind != guest:
+    return false
+  session.guestReqs >= guestMaxReqs or
+    (epochTime().int - session.guestCreated) >= guestMaxAgeSeconds
 
 proc getSessionPoolHealth*(): JsonNode =
   let now = epochTime().int
@@ -52,6 +69,7 @@ proc getSessionPoolHealth*(): JsonNode =
     average = 0'i64
     oauthTotal, cookieTotal = 0
     oauthLimited, cookieLimited = 0
+    guestTotal, guestLimited, guestNeedsRotation = 0
 
   for session in sessionPool:
     let created = snowflakeToEpoch(session.id)
@@ -64,12 +82,14 @@ proc getSessionPoolHealth*(): JsonNode =
     case session.kind
     of oauth: inc oauthTotal
     of cookie: inc cookieTotal
+    of guest: discard
 
     if session.limited:
       limited.incl session.id
       case session.kind
       of oauth: inc oauthLimited
       of cookie: inc cookieLimited
+      of guest: discard
 
     for api in session.apis.keys:
       let
@@ -81,6 +101,22 @@ proc getSessionPoolHealth*(): JsonNode =
         continue
 
       reqsPerApi.mgetOrPut($api, 0).inc reqs
+      totalReqs.inc reqs
+
+  guestTotal = guestPool.len
+  for session in guestPool:
+    if session.limited: inc guestLimited
+    if session.needsRotation: inc guestNeedsRotation
+
+    for api in session.apis.keys:
+      let
+        apiStatus = session.apis[api]
+        reqs = apiStatus.limit - apiStatus.remaining
+
+      if apiStatus.reset < now:
+        continue
+
+      reqsPerApi.mgetOrPut("guest:" & $api, 0).inc reqs
       totalReqs.inc reqs
 
   if sessionPool.len > 0:
@@ -95,6 +131,12 @@ proc getSessionPoolHealth*(): JsonNode =
       "limited": limited.card,
       "oauth": %*{"total": oauthTotal, "limited": oauthLimited},
       "cookie": %*{"total": cookieTotal, "limited": cookieLimited},
+      "guest": %*{
+        "total": guestTotal,
+        "limited": guestLimited,
+        "pendingRotation": guestNeedsRotation,
+        "poolSize": guestPoolSize
+      },
       "oldest": $fromUnix(oldest),
       "newest": $fromUnix(newest),
       "average": $fromUnix(average)
@@ -109,9 +151,11 @@ proc getSessionPoolDebug*(): JsonNode =
   let now = epochTime().int
   var list = newJObject()
 
-  for session in sessionPool:
+  for i, session in sessionPool:
+    let idStr = $session.id
     let sessionJson = %*{
       "kind": $session.kind,
+      "userId": (if idStr.len > 4: "..." & idStr[^4..^1] else: idStr),
       "apis": newJObject(),
       "pending": session.pending,
     }
@@ -132,7 +176,37 @@ proc getSessionPoolDebug*(): JsonNode =
         continue
 
       sessionJson{"apis", $api} = obj
-      list[$session.id] = sessionJson
+
+    list["acct-" & $i] = sessionJson
+
+  for i, session in guestPool:
+    let sessionJson = %*{
+      "kind": $session.kind,
+      "apis": newJObject(),
+      "pending": session.pending,
+      "requests": session.guestReqs,
+      "ageSeconds": epochTime().int - session.guestCreated,
+      "needsRotation": session.needsRotation
+    }
+
+    if session.limited:
+      sessionJson["limited"] = %true
+
+    for api in session.apis.keys:
+      let
+        apiStatus = session.apis[api]
+        obj = %*{}
+
+      if apiStatus.reset > now.int:
+        obj["remaining"] = %apiStatus.remaining
+        obj["reset"] = %apiStatus.reset
+
+      if "remaining" notin obj:
+        continue
+
+      sessionJson{"apis", $api} = obj
+
+    list["guest-" & $i] = sessionJson
 
   return %list
 
@@ -164,18 +238,48 @@ proc isLimited(session: Session; req: ApiReq): bool =
 proc isReady(session: Session; req: ApiReq): bool =
   not (session.isNil or session.pending > maxConcurrentReqs or session.isLimited(req))
 
+proc isGuestReady(session: Session; req: ApiReq): bool =
+  not (session.isNil or session.pending >= maxConcurrentReqs or
+       session.needsRotation or session.isLimited(req))
+
+proc guestPoolFull*(): bool =
+  guestPool.len >= guestPoolSize
+
+proc addGuestSession*(session: Session) =
+  guestPool.add session
+
+proc registerGuestRequest*(session: Session) =
+  if not session.isNil and session.kind == guest:
+    inc session.guestReqs
+
 proc invalidate*(session: var Session) =
   if session.isNil: return
   log "invalidating: ", session.pretty
 
   # TODO: This isn't sufficient, but it works for now
-  let idx = sessionPool.find(session)
-  if idx > -1: sessionPool.delete(idx)
+  case session.kind
+  of guest:
+    let idx = guestPool.find(session)
+    if idx > -1: guestPool.delete(idx)
+  of oauth, cookie:
+    let idx = sessionPool.find(session)
+    if idx > -1: sessionPool.delete(idx)
   session = nil
 
 proc release*(session: Session) =
   if session.isNil: return
   dec session.pending
+
+proc getGuestSession*(req: ApiReq): Session =
+  for session in guestPool:
+    if session.isGuestReady(req):
+      inc session.pending
+      return session
+
+proc findStaleGuestSession*(req: ApiReq): Session =
+  for session in guestPool:
+    if session.needsRotation or session.isLimited(req):
+      return session
 
 proc getSession*(req: ApiReq): Future[Session] {.async.} =
   for i in 0 ..< sessionPool.len:

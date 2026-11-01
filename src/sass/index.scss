@@ -7,6 +7,7 @@
 @import "inputs";
 @import "timeline";
 @import "search";
+@import "trends";
 @import "broadcast";
 @import "space";
 @import "_article";
@@ -139,6 +140,13 @@ body.fixed-nav .container {
 
 .icon-container {
   display: inline;
+}
+
+.profile-label {
+  color: var(--grey);
+  font-size: 13px;
+  line-height: 1.3em;
+  overflow-wrap: anywhere;
 }
 
 .overlay-panel {

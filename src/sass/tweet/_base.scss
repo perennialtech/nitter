@@ -20,6 +20,7 @@
   line-height: 1.3em;
   pointer-events: all;
   display: inline;
+  pointer-events: all;
 }
 
 .tweet-bidi {
@@ -87,6 +88,7 @@
   margin-top: 6px;
   margin-bottom: 0px;
   color: var(--grey);
+  pointer-events: all;
 }
 
 .tweet-avatar {
@@ -150,6 +152,21 @@
   color: var(--fg_faded);
 }
 
+.tweet-translate {
+  color: var(--fg_faded);
+  font-size: 0.85em;
+  margin: 0 0 2px;
+
+  a {
+    pointer-events: all;
+  }
+}
+
+.community-note .tweet-translate {
+  padding: 6px 10px 0;
+  margin: 0;
+}
+
 .replying-to {
   color: var(--fg_faded);
   margin: -2px 0 4px;
@@ -168,7 +185,6 @@
   flex-shrink: 0;
   flex-wrap: wrap;
   font-size: 14px;
-  font-weight: 600;
   line-height: 22px;
 
   span {
@@ -178,6 +194,20 @@
 
 .retweet-header {
   margin-top: -5px !important;
+
+  a {
+    color: var(--grey) !important;
+    pointer-events: all;
+  }
+}
+
+.retweet-date-sep {
+  margin: 0 4px;
+}
+
+.retweet-date {
+  color: var(--grey);
+  margin-left: 0 !important;
 }
 
 .tweet-stats {
@@ -191,6 +221,18 @@
   min-width: 1em;
   margin-right: 0.8em;
 }
+
+a.tweet-stat {
+  color: inherit;
+  text-decoration: none;
+  pointer-events: all; }
+  a.tweet-stat:hover {
+    text-decoration: underline; }
+
+.source {
+  margin-left: auto;
+  font-size: xx-small;
+  font-weight: normal; }
 
 .show-thread {
   display: block;
@@ -264,11 +306,41 @@
   }
 }
 
+.community-note-permalink {
+  margin-left: auto;
+  color: var(--accent);
+  pointer-events: all; }
+
 .community-note-text {
   white-space: pre-line;
   padding: 10px 10px;
   padding-top: 6px;
 }
+
+.community-note-meta-sep {
+  border-top: 1px solid var(--dark_grey);
+  margin: 0 10px; }
+
+.community-note-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 0.85em; }
+  .community-note-author a {
+    color: var(--accent); }
+  .community-note-date {
+    color: var(--grey); }
+
+.birdwatch-notes {
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%; }
+
+.birdwatch-notes-list {
+  background-color: var(--bg_panel);
+  margin-top: 4px;
+  padding: 0.75em; }
 
 .disclosures {
   display: flex;

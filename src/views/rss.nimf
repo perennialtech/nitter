@@ -274,6 +274,28 @@ ${renderRssTweets(tweets, cfg, prefs)}
 </rss>
 #end proc
 #
+#proc renderCommunityNotesRss*(tweets: seq[Tweets]; tab: string; cfg: Config; prefs: Prefs): string =
+#let urlPrefix = getUrlPrefix(cfg)
+#let path = if tab == "new": "/i/communitynotes/new" else: "/i/communitynotes"
+#let label = if tab == "new": "New" else: "Rated Helpful"
+## the note is the whole point of this feed, so always render it
+#var prefs = prefs
+#prefs.hideCommunityNotes = false
+#result = ""
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+  <channel>
+    <atom:link href="${urlPrefix}${path}/rss" rel="self" type="application/rss+xml" />
+    <title>Community Notes - ${label}</title>
+    <link>${urlPrefix}${path}</link>
+    <description>${getDescription(&"Community Notes ({label})", cfg)}</description>
+    <language>en-us</language>
+    <ttl>40</ttl>
+${renderRssTweets(tweets, cfg, prefs)}
+  </channel>
+</rss>
+#end proc
+#
 #proc renderSearchRss*(tweets: seq[Tweets]; name, param: string; cfg: Config; prefs: Prefs): string =
 #let link = &"{getUrlPrefix(cfg)}/search"
 #let escName = xmltree.escape(name)

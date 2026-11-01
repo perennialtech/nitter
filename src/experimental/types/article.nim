@@ -17,6 +17,7 @@ type
     replyCount*: int
     retweetCount*: int
     favoriteCount*: int
+    quoteCount*: int
 
   ArticleResultNode* = object
     title*: string

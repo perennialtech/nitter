@@ -35,6 +35,7 @@ proc renderUserCard*(user: User; prefs: Prefs; info: AccountInfo): VNode =
         linkUser(user, class="profile-card-fullname")
         verifiedIcon(user)
         linkUser(user, class="profile-card-username")
+        profileLabel(user)
 
     tdiv(class="profile-card-extra"):
       if user.bio.len > 0:

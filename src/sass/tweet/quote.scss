@@ -22,6 +22,18 @@
     padding: 8px 10px 6px 10px;
   }
 
+  .profile-label {
+    padding: 0 10px 6px;
+    margin-top: -4px;
+    font-size: 12px;
+  }
+
+  > .tweet-translate {
+    position: relative;
+    padding: 0 10px 4px;
+    margin: 0;
+  }
+
   .quote-text {
     overflow: hidden;
     white-space: pre-wrap;
