@@ -1,8 +1,6 @@
 --- a/pure/httpclient.nim
 +++ b/pure/httpclient.nim
-@@ -752,10 +752,12 @@ proc reportProgress(client: HttpClient | AsyncHttpClient,
-                     progress: BiggestInt) {.multisync.} =
-   client.contentProgress += progress
+@@ -754,7 +754,9 @@
    client.oneSecondProgress += progress
 -  if (getMonoTime() - client.lastProgressReport).inSeconds >= 1:
 -    if not client.onProgressChanged.isNil:
@@ -17,4 +15,37 @@
 +                                   client.oneSecondProgress)
 +    if (getMonoTime() - client.lastProgressReport).inSeconds >= 1:
        client.oneSecondProgress = 0
-       client.lastProgressReport = getMonoTime()
+@@ -1058,3 +1060,18 @@
+     elif client is AsyncHttpClient:
+-      client.socket = await asyncnet.dial(connectionUrl.hostname, port)
++      # Publish each in-progress socket before awaiting TCP connect, so a
++      # request deadline can close it. Try both address families as dial did.
++      var connectError: ref CatchableError
++      for domain in [AF_INET, AF_INET6]:
++        client.socket = newAsyncSocket(domain=domain)
++        try:
++          await client.socket.connect(connectionUrl.hostname, port)
++          connectError = nil
++          break
++        except CatchableError as err:
++          if client.socket.isClosed:
++            raise # Closed externally by the request deadline.
++          client.socket.close()
++          connectError = err
++      if connectError != nil:
++        raise connectError
+     else: {.fatal: "Unsupported client type".}
+--- a/pure/asyncdispatch.nim
++++ b/pure/asyncdispatch.nim
+@@ -1802,4 +1802,9 @@
+     proc cb(fd: AsyncFD): bool =
+-      let ret = SocketHandle(fd).getSockOptInt(
+-        cint(SOL_SOCKET), cint(SO_ERROR))
++      let ret = try:
++        SocketHandle(fd).getSockOptInt(cint(SOL_SOCKET), cint(SO_ERROR))
++      except OSError:
++        # closeSocket invokes pending callbacks after closing the descriptor.
++        # A pending connect must fail instead of raising from that callback.
++        retFuture.fail(getCurrentException())
++        return true
+       if ret == 0:

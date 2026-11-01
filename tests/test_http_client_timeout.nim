@@ -49,6 +49,38 @@ proc checkBoundedRequest(mode: string) {.async.} =
     client.close()
     listener.close()
 
+proc checkConnectingTimeout() {.async.} =
+  # A full TCP accept backlog keeps the next connect in progress. This is the
+  # one phase where Nim's original asyncnet.dial hid its socket until success.
+  let listener = net.newSocket()
+  listener.bindAddr(Port(0), "127.0.0.1")
+  listener.listen(1)
+  let (_, port) = listener.getLocalAddr()
+  let first = net.newSocket()
+  let second = net.newSocket()
+  let client = newAsyncHttpClient()
+
+  try:
+    first.connect("127.0.0.1", port)
+    second.connect("127.0.0.1", port)
+
+    var timedOut = false
+    try:
+      discard await client.getBounded("http://127.0.0.1:" & $port, 100)
+    except IOError as err:
+      timedOut = "timed out" in err.msg
+
+    doAssert timedOut, "pending TCP connect must respect the deadline"
+    doAssert client.getSocket() != nil,
+      "pending connection socket must be owned by the HTTP client"
+    doAssert client.getSocket().isClosed,
+      "deadline must close an in-progress TCP socket"
+  finally:
+    client.close()
+    second.close()
+    first.close()
+    listener.close()
+
 suite "bounded upstream HTTP operations":
   test "stalled response headers close the socket":
     waitFor checkBoundedRequest("headers")
@@ -56,3 +88,5 @@ suite "bounded upstream HTTP operations":
     waitFor checkBoundedRequest("body")
   test "complete responses retain normal behaviour":
     waitFor checkBoundedRequest("complete")
+  test "pending TCP connection closes on timeout":
+    waitFor checkConnectingTimeout()

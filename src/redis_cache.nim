@@ -7,6 +7,7 @@ import types, api
 const
   redisNil = "\0\0"
   baseCacheTime = 60 * 60
+  userIdExpiryMigration = "pidExpiryV1"
 
 var
   pool: RedisPool
@@ -41,17 +42,33 @@ proc migrate*(key, match: string) {.async.} =
       dawait r.flushPipeline()
 
 proc expireLegacyUserIds() {.async.} =
-  # Older versions never expired pid:* hashes. Visit every batch rather than
-  # retaining their entire keyspace in memory during startup.
+  # Older versions never expired pid:* hashes. Migrate once, scanning in
+  # batches so the complete Redis keyspace is never held in Nitter's heap.
   try:
     let cursor = newCursor()
+    var firstBatch = true
     while true:
-      pool.withAcquire(r):
+      let r = await pool.acquire()
+      var dropConnection = false
+      try:
+        if firstBatch:
+          if (await r.get(userIdExpiryMigration)) != redisNil:
+            return
+          firstBatch = false
+
         let keys = await r.scan(cursor, "pid:*", 500)
         r.startPipelining()
         for key in keys:
           dawait r.expire(key, baseCacheTime)
         dawait r.flushPipeline()
+        if cursor.position == 0:
+          await r.setk(userIdExpiryMigration, "true")
+      except CatchableError:
+        # Do not reuse a connection whose pipeline may be interrupted.
+        dropConnection = true
+        raise
+      finally:
+        await pool.release(r, dropConnection)
       if cursor.position == 0:
         break
   except CatchableError:
@@ -99,8 +116,11 @@ proc cacheUserId(username, id: string) {.async.} =
   if username.len == 0 or id.len == 0: return
   let name = toLower(username)
   pool.withAcquire(r):
+    # An interrupted write must never leave a permanent pid:* hash behind.
+    await r.multi()
     dawait r.hSet(name.uidKey, name, id)
     dawait r.expire(name.uidKey, baseCacheTime)
+    dawait r.exec()
 
 proc cache*(data: List) {.async.} =
   await setEx(data.listKey, listCacheTime, compress(toFlatty(data)))

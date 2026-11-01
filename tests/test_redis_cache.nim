@@ -14,6 +14,8 @@ proc testUserIdExpiry() {.async.} =
   var keys: seq[string]
 
   try:
+    # Simulate the first upgraded startup, even on a reused local test Redis.
+    discard await conn.del("pidExpiryV1")
     # Existing installations may already have thousands of permanent hashes.
     # More than one SCAN batch must be visited to give all of them an expiry.
     for i in 0 ..< 800:
@@ -37,6 +39,7 @@ proc testUserIdExpiry() {.async.} =
         break
       await sleepAsync(10)
     doAssert expired, "legacy user ID hashes must acquire a TTL"
+    doAssert (await conn.get("pidExpiryV1")) != "\0\0"
 
     let
       name = prefix & "_new"
