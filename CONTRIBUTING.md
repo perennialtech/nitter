@@ -5,17 +5,19 @@ Install Nim 2.2.12 or newer, libsass, and libpcre as described in the
 
 ```bash
 nimble install -y --depsOnly
-bash tools/patch-nim-stdlib.sh
+bash tools/patch-nim.sh
 nimble build -Y
 nimble scss
 nimble md
 nim r tests/test_ssrf_1411.nim
 nim r tests/test_formatters.nim
 nim r tests/test_timeline.nim
+nim r tests/test_return_destroy.nim
 ```
 
-The last three commands test media URL security, HTML text formatting, and
-pinned tweet rendering without Twitter credentials.
+The last four commands test media URL security, HTML text formatting, pinned
+tweet rendering, and the patched compiler's destruction of overwritten
+results, without Twitter credentials.
 
 ## HTTP proxy regression tests
 
