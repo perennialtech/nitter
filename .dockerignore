@@ -10,3 +10,4 @@ tests/*
 !tests/test_ssrf_1411.nim
 !tests/test_formatters.nim
 !tests/test_timeline.nim
+!tests/test_return_destroy.nim

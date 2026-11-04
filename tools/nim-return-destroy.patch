@@ -1,0 +1,15 @@
+--- a/compiler/condsyms.nim
++++ b/compiler/condsyms.nim
+@@ -36,2 +36,3 @@
+   template defineSymbol(s) = symbols.defineSymbol(s)
++  defineSymbol("nitterReturnDestroyPatched")
+   defineSymbol("nimhygiene") # deadcode
+--- a/compiler/injectdestructors.nim
++++ b/compiler/injectdestructors.nim
+@@ -281,3 +281,5 @@
+       (isAnalysableFieldAccess(dest, c.owner) and isFirstWrite(dest, c)))) or
+-      isNoInit(dest) or IsReturn in flags:
++      isNoInit(dest):
++    # Never for `return x`: an earlier `result = y` must still be destroyed,
++    # or every `result = y; return x` leaks `y`.
+     # optimize sink call into a bitwise memcopy

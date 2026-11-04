@@ -6,8 +6,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src/nitter
-COPY tools/nim-httpclient-backpressure.patch tools/patch-nim-stdlib.sh ./tools/
-RUN bash tools/patch-nim-stdlib.sh
+COPY tools/nim-httpclient-backpressure.patch tools/nim-return-destroy.patch tools/patch-nim.sh ./tools/
+RUN bash tools/patch-nim.sh
 
 COPY nitter.nimble .
 RUN nimble install -y --depsOnly
@@ -17,6 +17,7 @@ RUN python3 tests/test_http_proxy.py -v \
     && nim r tests/test_ssrf_1411.nim \
     && nim r tests/test_formatters.nim \
     && nim r tests/test_timeline.nim \
+    && nim r tests/test_return_destroy.nim \
     && nimble build -d:danger -d:lto -d:strip \
     && nimble scss \
     && nimble md
