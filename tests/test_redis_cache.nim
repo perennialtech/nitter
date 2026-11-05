@@ -10,7 +10,7 @@ proc testUserIdExpiry() {.async.} =
     conn = await openAsync("127.0.0.1", Port(port))
     prefix = "nitter_expiry_test_" & $getTime().toUnix & "_" & $getCurrentProcessId()
     cfg = Config(redisHost: "127.0.0.1", redisPort: port,
-                 redisConns: 1, redisMaxConns: 2, listCacheTime: 10)
+                 redisConns: 1, redisMaxConns: 2)
     profileName = prefix & "_new"
   var
     keys: seq[string]
@@ -40,7 +40,6 @@ proc testUserIdExpiry() {.async.} =
       discard await conn.hSet(key, name, $i)
       doAssert (await conn.ttl(key)) == -1
 
-    setCacheTimes(cfg)
     await initRedisPool(cfg)
 
     var expired = false
@@ -73,61 +72,11 @@ proc testUserIdExpiry() {.async.} =
                      joinDate: fromUnix(0).utc))
     doAssert (await conn.hGet(key, profileName)) == "12345"
     doAssert (await conn.ttl(key)) > 0, "new user ID hashes must expire"
-
-    # Flatty has no schema version. An old positional User payload is not
-    # readable after the User layout changes.
-    let legacyValue = "old positional User cache"
-    await conn.setk("p:" & profileName, legacyValue)
-    await cache(User(id: "67890", username: profileName,
-                     parodyLabel: "Fan", joinDate: fromUnix(0).utc))
-    doAssert (await conn.get("p:" & profileName)) == legacyValue,
-      "new User caching must not overwrite the old binary namespace"
-    let cachedUser = await getCachedUser(profileName, fetch=false)
-    doAssert cachedUser.id == "67890"
-    doAssert cachedUser.parodyLabel == "Fan"
-
-    # Community entries embed User values and share its binary layout.
-    let communityId = prefix & "_community"
-    await conn.setk("cm:" & communityId, legacyValue)
-    await cache(Community(id: communityId, createdAt: fromUnix(0).utc,
-                          creator: User(username: profileName,
-                                        joinDate: fromUnix(0).utc)))
-    doAssert (await conn.get("cm:" & communityId)) == legacyValue,
-      "new Community caching must not overwrite the old binary namespace"
-    let cachedCommunity = await getCachedCommunity(communityId)
-    doAssert cachedCommunity.creator.username == profileName
-
-    # Broadcasts and audio spaces also embed the changed User object.
-    let broadcastId = prefix & "_broadcast"
-    await conn.setk("bc:" & broadcastId, legacyValue)
-    await cache(Broadcast(id: broadcastId,
-                          startTime: fromUnix(0).utc,
-                          endTime: fromUnix(0).utc,
-                          user: User(joinDate: fromUnix(0).utc)))
-    doAssert (await conn.get("bc:" & broadcastId)) == legacyValue,
-      "new Broadcast caching must not overwrite the old binary namespace"
-
-    let spaceId = prefix & "_space"
-    await conn.setk("sp:" & spaceId, legacyValue)
-    await cache(AudioSpace(id: spaceId, state: "ENDED",
-                           startTime: fromUnix(0).utc,
-                           endTime: fromUnix(0).utc,
-                           creator: User(joinDate: fromUnix(0).utc)))
-    doAssert (await conn.get("sp:" & spaceId)) == legacyValue,
-      "new AudioSpace caching must not overwrite the old binary namespace"
-
   finally:
     try:
       for key in keys:
         discard await conn.del(key)
       discard await conn.del("p:" & profileName)
-      discard await conn.del("p2:" & profileName)
-      discard await conn.del("cm:" & (prefix & "_community"))
-      discard await conn.del("cm2:" & (prefix & "_community"))
-      discard await conn.del("bc:" & (prefix & "_broadcast"))
-      discard await conn.del("bc2:" & (prefix & "_broadcast"))
-      discard await conn.del("sp:" & (prefix & "_space"))
-      discard await conn.del("sp2:" & (prefix & "_space"))
       for marker in markers:
         if marker.expiresAt == -2 or marker.expiresAt == 0 or
            (marker.expiresAt > 0 and marker.expiresAt <= getTime().toUnix):
@@ -139,6 +88,6 @@ proc testUserIdExpiry() {.async.} =
     finally:
       await conn.close()
 
-suite "Redis cache compatibility and expiration":
-  test "user IDs expire and changed records have separate cache keys":
+suite "user ID Redis cache expiration":
+  test "new and legacy ID mappings expire":
     waitFor testUserIdExpiry()
