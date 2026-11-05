@@ -119,3 +119,11 @@ suite "translated links":
   test "unsafe schemes remain plain text":
     let link = "https://t.co/example"
     check expandGrokTranslation(link, @[(url: link, expanded: "javascript:alert(1)")]) == link
+  test "link every occurrence in the original translated text":
+    let
+      source = "https://example.com/?a=1&b=2"
+      target = "https://example.org/"
+      anchor = "<a href=\"" & target & "\">" & target & "</a>"
+      translated = expandGrokTranslation("猫 " & source & " and " & source,
+                                         @[(url: source, expanded: target)])
+    check translated == "猫 " & anchor & " and " & anchor

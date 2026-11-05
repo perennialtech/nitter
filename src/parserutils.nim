@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[times, macros, htmlgen, options, algorithm, re, uri]
+import std/[times, macros, htmlgen, options, algorithm, re, sets, uri]
 import std/strutils except escape
 import std/unicode except strip
 from xmltree import escape
@@ -516,30 +516,41 @@ proc expandNoteTranslation*(text: string; entities: JsonNode): string =
 
 proc expandGrokTranslation*(text: string;
                             links: seq[tuple[url, expanded: string]]): string =
-  let
-    escaped = text.escapeEntityText
-    runes = escaped.toRunes
-  var replacements: seq[ReplaceSlice]
+  let runes = text.escapeEntityText.toRunes
+  var
+    replacements: seq[ReplaceSlice]
+    seen: HashSet[string]
 
   for link in links:
-    if link.url.len == 0: continue
-    let idx = escaped.find(link.url)
-    if idx < 0: continue
+    if link.url.len == 0 or link.url in seen: continue
     let
-      start = escaped[0 ..< idx].runeLen
       target = if link.expanded.len > 0: link.expanded else: link.url
       href = target.localizeExternalLink
-    if href.len > 0:
+    if href.len == 0: continue
+    seen.incl link.url
+
+    var offset = 0
+    while true:
+      let idx = text.find(link.url, offset)
+      if idx < 0: break
+      let start = text[0 ..< idx].runeLen
       replacements.add ReplaceSlice(
         kind: rkUrl,
         slice: start ..< start + link.url.runeLen,
         url: href,
         display: target
       )
+      offset = idx + link.url.len
 
-  replacements.deduplicate
-  replacements.sort(cmp)
-  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
+  # An expanded source URL can be a prefix of another reported URL.
+  replacements.sort(proc (a, b: ReplaceSlice): int =
+    result = cmp(a.slice.a, b.slice.a)
+    if result == 0: result = cmp(b.slice.b, a.slice.b))
+  var disjoint: seq[ReplaceSlice]
+  for replacement in replacements:
+    if disjoint.len == 0 or replacement.slice.a > disjoint[^1].slice.b:
+      disjoint.add replacement
+  result = runes.replacedWith(disjoint, 0 .. runes.len).unescapeEntityText
 
 proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
   let url =
