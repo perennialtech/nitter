@@ -69,6 +69,9 @@ proc setProxyEncoding*(state: bool) =
 proc getHmac*(data: string): string =
   ($hmac(sha256, hmacKey, data))[0 .. 12]
 
+proc translationSignature*(id: string; note: bool): string =
+  getHmac((if note: "translation:note:" else: "translation:post:") & id)
+
 proc getVidUrl*(link: string): string =
   if link.len == 0: return
   let sig = getHmac(link)

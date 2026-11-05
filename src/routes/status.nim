@@ -112,13 +112,15 @@ proc createStatusRouter*(cfg: Config) =
       let html = renderEditHistory(edits, prefs, getPath())
       resp renderMain(html, request, cfg, prefs, title, desc, ogTitle)
 
-    get "/@name/status/@id/translate/?":
+    post "/@name/status/@id/translate/?":
       cond '.' notin @"name"
       cond onDemandTranslation()
       let id = @"id"
 
-      if id.len > 19 or id.any(c => not c.isDigit):
+      if not id.isDigits:
         resp Http404, showError("Invalid tweet ID", cfg)
+      if @"sig" != translationSignature(id, note=false):
+        resp Http403, showError("Invalid translation request", cfg)
 
       if not await translateOnDemand(id):
         resp Http502, showError("Translation request failed", cfg)
@@ -245,12 +247,14 @@ proc createStatusRouter*(cfg: Config) =
                        request, cfg, prefs,
                        "Community Note", "Community note", "Community Note")
 
-    get "/i/birdwatch/n/@id/translate/?":
+    post "/i/birdwatch/n/@id/translate/?":
       cond onDemandTranslation()
       let id = @"id"
 
       if not id.isDigits:
         resp Http404, showError("Invalid note ID", cfg)
+      if @"sig" != translationSignature(id, note=true):
+        resp Http403, showError("Invalid translation request", cfg)
 
       if not await translateOnDemand(id, note=true):
         resp Http502, showError("Translation request failed", cfg)

@@ -33,10 +33,8 @@ proc renderBirdwatchNote(note: BirdwatchNote; prefs: Prefs; translate = false;
         a(class="community-note-permalink", href="/i/birdwatch/n/" & note.id, title="Permalink to this note"):
           icon "link"
     if onDemand:
-      renderTranslateOnDemandLink(
-        "/i/birdwatch/n/" & note.id & "/translate" &
-          (if backPath.len > 0: "?r=" & backPath else: ""),
-        "Ask Grok to translate this note")
+      renderTranslateOnDemandForm("/i/birdwatch/n/" & note.id & "/translate",
+                                  note.id, note=true, backPath=backPath)
     elif transOn:
       renderTranslateLabel(transActive, translate, note.transLang, transUrl, note.transTarget)
     tdiv(class="community-note-text", dir="auto"):

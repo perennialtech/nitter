@@ -24,6 +24,7 @@ let
   (cfg, fullCfg) = getConfig(configPath)
 
   sessionsPath = getEnv("NITTER_SESSIONS_FILE", "./sessions.jsonl")
+  hasHmacKey = cfg.hmacKey.len > 0 and cfg.hmacKey != "secretkey"
 
 if cfg.guestAuth:
   try:
@@ -35,10 +36,13 @@ else:
 
 setShowRetweetTime(cfg.showRetweetTime)
 setEnableTranslation(cfg.enableTranslation)
-if cfg.onDemandTranslation and cfg.guestAuth:
-  echo "[translation] onDemandTranslation needs cookie sessions, ignoring it because guestAuth is enabled"
-setOnDemandTranslation(cfg.onDemandTranslation and cfg.enableTranslation and not cfg.guestAuth,
-                    cfg.onDemandTranslationLang)
+if cfg.onDemandTranslation and cfg.enableTranslation:
+  if cfg.guestAuth:
+    echo "[translation] onDemandTranslation requires cookie sessions"
+  elif not hasHmacKey:
+    echo "[translation] onDemandTranslation requires a unique hmacKey"
+setOnDemandTranslation(cfg.onDemandTranslation and cfg.enableTranslation and
+                       not cfg.guestAuth and hasHmacKey, cfg.onDemandTranslationLang)
 
 if not cfg.enableDebug:
   # Silence Jester's query warning
@@ -51,7 +55,7 @@ stdout.flushFile
 updateDefaultPrefs(fullCfg)
 setCacheTimes(cfg)
 setHmacKey(cfg.hmacKey)
-if cfg.hmacKey.len == 0 or cfg.hmacKey == "secretkey":
+if not hasHmacKey:
   stderr.write "WARNING: insecure default 'hmacKey' in nitter.conf; " &
     "set a unique random value to stop media URL signatures being forgeable.\n"
   stderr.flushFile

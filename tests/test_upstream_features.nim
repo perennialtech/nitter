@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import std/[asyncdispatch, strutils, unittest]
-import packedjson
+import packedjson, karax/vdom
 import ../src/[api, apiutils, consts, formatters, parserutils, trends, utils]
+import ../src/views/tweet
 
 proc checkTranslationCoalescing() {.async.} =
   setOnDemandTranslation(true, "en")
@@ -127,3 +128,16 @@ suite "translated links":
       translated = expandGrokTranslation("猫 " & source & " and " & source,
                                          @[(url: source, expanded: target)])
     check translated == "猫 " & anchor & " and " & anchor
+
+suite "on-demand translation forms":
+  test "actions are signed for their content type and submitted via POST":
+    setHmacKey("translation-test-key")
+    let
+      note = translationSignature("123", note=true)
+      post = translationSignature("123", note=false)
+      form = $renderTranslateOnDemandForm("/i/birdwatch/n/123/translate", "123", note=true)
+    check note != post
+    check note != translationSignature("124", note=true)
+    check "method=\"post\"" in form
+    check "action=\"/i/birdwatch/n/123/translate\"" in form
+    check "name=\"sig\" value=\"" & note & "\"" in form

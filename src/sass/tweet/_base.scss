@@ -157,8 +157,21 @@
   font-size: 0.85em;
   margin: 0 0 2px;
 
-  a {
+  a, button {
     pointer-events: all;
+  }
+
+  button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
   }
 }
 

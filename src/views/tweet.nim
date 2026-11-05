@@ -354,14 +354,17 @@ proc canTranslateOnDemand(tweet: Tweet): bool =
   onDemandTranslation() and tweet.isTranslatable and tweet.translation.len == 0 and
     not (tweet.translatable and not tweet.showTrans)
 
-proc renderTranslateOnDemandLink*(href, title: string): VNode =
-  buildHtml(tdiv(class="tweet-translate tweet-translate-ondemand")):
-    a(href=href, title=title):
+proc renderTranslateOnDemandForm*(path, id: string; note = false; backPath = ""): VNode =
+  buildHtml(form(class="tweet-translate", `method`="post", action=path)):
+    input(`type`="hidden", name="sig", value=translationSignature(id, note))
+    if backPath.len > 0:
+      input(`type`="hidden", name="r", value=backPath)
+    button(`type`="submit", title=(if note: "Ask Grok to translate this note"
+                                 else: "Ask Grok to translate this post")):
       text "Translate to " & langName(onDemandTranslationLang())
 
 proc renderTranslateOnDemand(tweet: Tweet): VNode =
-  renderTranslateOnDemandLink(getLink(tweet, focus=false) & "/translate",
-                              "Ask Grok to translate this post")
+  renderTranslateOnDemandForm(getLink(tweet, focus=false) & "/translate", $tweet.id)
 
 proc noteCanTranslateOnDemand*(flagged, translatable, requested: bool;
                                translation: string): bool =
@@ -384,9 +387,8 @@ proc renderCommunityNote(note: string; prefs: Prefs; tweet: Tweet = nil;
       icon "group"
       span: text "Community note"
     if onDemand:
-      renderTranslateOnDemandLink(
-        "/i/birdwatch/n/" & tweet.noteId & "/translate?r=/i/status/" & $tweet.id,
-        "Ask Grok to translate this note")
+      renderTranslateOnDemandForm("/i/birdwatch/n/" & tweet.noteId & "/translate",
+                                  tweet.noteId, note=true, backPath="/i/status/" & $tweet.id)
     elif hasTrans:
       renderTranslateLabel(active, tweet.showTrans, tweet.noteTransLang, transUrl,
                            tweet.noteTransTarget)
