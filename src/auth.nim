@@ -276,9 +276,9 @@ proc getGuestSession*(req: ApiReq): Session =
       inc session.pending
       return session
 
-proc findStaleGuestSession*(req: ApiReq): Session =
+proc findIdleStaleGuestSession*(req: ApiReq): Session =
   for session in guestPool:
-    if session.needsRotation or session.isLimited(req):
+    if session.pending == 0 and (session.needsRotation or session.isLimited(req)):
       return session
 
 proc getSession*(req: ApiReq): Future[Session] {.async.} =

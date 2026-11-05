@@ -235,8 +235,8 @@ proc getReadyGuestSession*(req: ApiReq;
     except CatchableError:
       raise rateLimitError()
 
-  var stale = findStaleGuestSession(req)
-  if not stale.isNil and stale.pending == 0:
+  var stale = findIdleStaleGuestSession(req)
+  if not stale.isNil:
     invalidate(stale)
 
   if guestPoolFull():

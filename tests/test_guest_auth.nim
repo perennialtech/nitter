@@ -65,6 +65,30 @@ proc checkConcurrentGuestPoolGrowth() {.async.} =
     setGuestPoolSize(1)
     setMaxConcurrentReqs(2)
 
+proc checkIdleStaleGuestRotation() {.async.} =
+  let expiredAt = epochTime().int - guestMaxAgeSeconds - 1
+  var
+    busy = Session(kind: guest, guestToken: "busy", guestCreated: expiredAt, pending: 1)
+    idle = Session(kind: guest, guestToken: "idle", guestCreated: expiredAt)
+    fresh = Session(kind: guest, guestToken: "fresh", guestCreated: epochTime().int)
+  proc activate(): Future[Session] {.async.} =
+    return fresh
+
+  setGuestPoolSize(2)
+  addGuestSession(busy)
+  addGuestSession(idle)
+  try:
+    let selected = await getReadyGuestSession(request, activate)
+    doAssert selected == fresh
+    doAssert busy.pending == 1
+    doAssert getSessionPoolHealth()["sessions"]["guest"]["total"].getInt == 2
+    release(selected)
+  finally:
+    invalidate(busy)
+    invalidate(idle)
+    invalidate(fresh)
+    setGuestPoolSize(1)
+
 proc checkFailedGuestActivation() {.async.} =
   let gate = newFuture[Session]("failed guest activation")
   var activations = 0
@@ -154,6 +178,9 @@ suite "guest sessions":
 
   test "waiting callers can fill free guest pool slots":
     waitFor checkConcurrentGuestPoolGrowth()
+
+  test "an idle stale guest is replaceable behind a busy stale guest":
+    waitFor checkIdleStaleGuestRotation()
 
   test "failed activation releases the reservation":
     waitFor checkFailedGuestActivation()
