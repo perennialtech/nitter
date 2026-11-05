@@ -14,6 +14,7 @@ type
 
 var
   cache: Table[int, TrendsCache]
+  pending: Table[int, Future[seq[Trend]]]
   cacheSeconds = 15 * 60
 
 proc setTrendsCacheMinutes*(minutes: int) =
@@ -60,26 +61,34 @@ proc fetchTrendsUncached(woeid: int): Future[seq[Trend]] {.async.} =
           searchQuery: searchQuery,
           tweetVolume: vol
         )
-  except Exception as e:
+  except CatchableError as e:
     echo "[trends] error fetching woeid ", woeid, ": ", e.msg
     result = @[]
 
-proc getTrends*(woeid: int; maxItems: int): Future[seq[Trend]] {.async.} =
-  let now = epochTime().int64
+type TrendsFetcher* = proc(woeid: int): Future[seq[Trend]] {.closure.}
 
-  template capped(s: seq[Trend]): seq[Trend] =
-    if maxItems >= 0 and s.len > maxItems: s[0 ..< maxItems] else: s
+proc refreshTrends(woeid: int; fetch: TrendsFetcher): Future[seq[Trend]] {.async.} =
+  let fresh = await fetch(woeid)
+  result = if fresh.len > 0: fresh else: cache.getOrDefault(woeid).trends
+  # Cache failed attempts too, serving stale results if available.
+  cache[woeid] = TrendsCache(trends: result, fetched: epochTime().int64)
 
-  if cache.hasKey(woeid):
+proc getTrends*(woeid: int; maxItems: int;
+                fetch: TrendsFetcher = fetchTrendsUncached): Future[seq[Trend]] {.async.} =
+  proc capped(items: seq[Trend]): seq[Trend] =
+    if maxItems >= 0 and items.len > maxItems: items[0 ..< maxItems] else: items
+
+  if woeid in cache:
     let entry = cache[woeid]
-    if now - entry.fetched < cacheSeconds:
+    if epochTime().int64 - entry.fetched < cacheSeconds:
       return capped(entry.trends)
 
-  let fresh = await fetchTrendsUncached(woeid)
-  if fresh.len > 0:
-    cache[woeid] = TrendsCache(trends: fresh, fetched: now)
-    return capped(fresh)
+  if woeid in pending:
+    return capped(await pending[woeid])
 
-  if cache.hasKey(woeid):
-    return capped(cache[woeid].trends)
-  return @[]
+  let refresh = refreshTrends(woeid, fetch)
+  pending[woeid] = refresh
+  try:
+    return capped(await refresh)
+  finally:
+    pending.del(woeid)

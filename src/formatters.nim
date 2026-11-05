@@ -30,7 +30,6 @@ let
   extRegex = re"(\.[A-z]+)$"
   illegalXmlRegex = re"(*UTF8)[^\x09\x0A\x0D\x20-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]"
   birdwatchUrlRegex = re"""https?://[^\s<>"]+"""
-  birdwatchLocalRegex = re"^https?://(?:www\.|mobile\.)?(?:x|twitter)\.com(?=/|$)"
 
 proc getUrlPrefix*(cfg: Config): string =
   if cfg.useHttps: https & cfg.hostname
@@ -93,11 +92,6 @@ proc replaceUrls*(body: string; prefs: Prefs; absolute=""): string =
   if absolute.len > 0 and "href" in result:
     result = result.replace("href=\"/", &"href=\"{absolute}/")
 
-let plainUrlRegex = re"""(?<!href=")(https?://[^\s<>"]+)"""
-
-proc linkifyUrls*(text: string): string =
-  text.replacef(plainUrlRegex, "<a href=\"$1\">$1</a>")
-
 let tcoHrefRegex = re("\"https?://t\\.co/(\\w+)\"")
 
 proc linkifyBirdwatchUrls*(text: string): string =
@@ -109,11 +103,7 @@ proc linkifyBirdwatchUrls*(text: string): string =
       dec last
 
     let url = text[first .. last]
-    let local = url.replace(birdwatchLocalRegex, "")
-    let href =
-      if local.len == url.len: url
-      elif local.len == 0: "/"
-      else: local
+    let href = url.localizeTwitterLink
 
     result.add xmltree.escape(text[pos ..< first])
     result.add "<a href=\"" & xmltree.escape(href) & "\">" & xmltree.escape(url) & "</a>"

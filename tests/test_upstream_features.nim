@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, unittest]
-import ../src/[api, apiutils, consts, parserutils]
+import std/[asyncdispatch, strutils, unittest]
+import packedjson
+import ../src/[api, apiutils, consts, formatters, parserutils, trends, utils]
 
 proc checkTranslationCoalescing() {.async.} =
   setOnDemandTranslation(true, "en")
@@ -52,6 +53,61 @@ suite "on-demand translations":
     waitFor checkTranslationCoalescing()
   test "failed translations are coalesced and negatively cached":
     waitFor checkTranslationFailure()
+
+suite "upstream link rendering":
+  test "translated URLs escape HTML attributes":
+    let entities = parseJson("""{"urls":[{"indices":[4,8],"expanded_url":"https://example.org/\" onmouseover=\"alert(1)"}]}""")
+    let html = expandTranslation("see link", entities)
+    check "href=\"https://example.org/&quot; onmouseover=&quot;alert(1)\"" in html
+    check "\" onmouseover=\"" notin html
+
+  test "translated notes leave non-web URLs as text":
+    let entities = parseJson("""[{"from_index":4,"to_index":8,"ref":{"url":"javascript:alert(1)"}}]""")
+    check expandNoteTranslation("see link", entities) == "see link"
+
+  test "invalid note ranges preserve the escaped original text":
+    let entities = parseJson("""[{"fromIndex":4,"toIndex":6,"ref":{"url":"https://example.org"}}]""")
+    check expandBirdwatchEntities("<b>", entities) == "&lt;b&gt;"
+    check expandBirdwatchEntities("<b>", parseJson("null")) == "&lt;b&gt;"
+
+  test "note entity offsets link the full text and support both field spellings":
+    let
+      camel = parseJson("""[{"fromIndex":0,"toIndex":4,"ref":{"url":"https://x.com/test"}}]""")
+      snake = parseJson("""[{"from_index":0,"to_index":4,"ref":{"url":"https://x.com/test"}}]""")
+      expected = "<a href=\"/test\">link</a>"
+    check expandBirdwatchEntities("link", camel) == expected
+    check expandBirdwatchEntities("link", snake) == expected
+
+  test "Twitter paths remain on their original host if they resemble a hostname":
+    let url = "https://x.com//example.org/path"
+    check localizeTwitterLink(url) == url
+    check localizeTwitterLink("https://x.com/\\example.org/path") ==
+      "https://x.com/\\example.org/path"
+    check localizeTwitterLink("https://x.com?src=1") == "/?src=1"
+    check linkifyBirdwatchUrls(url) ==
+      "<a href=\"" & url & "\">" & url & "</a>"
+
+proc checkTrendsFailure() {.async.} =
+  let gate = newFuture[seq[Trend]]("failed trends request")
+  var requests = 0
+  proc fetch(woeid: int): Future[seq[Trend]] =
+    doAssert woeid == 23424977
+    inc requests
+    gate
+
+  let
+    first = getTrends(23424977, 10, fetch)
+    second = getTrends(23424977, 10, fetch)
+  doAssert requests == 1
+  gate.complete(@[])
+  doAssert (await first).len == 0
+  doAssert (await second).len == 0
+  doAssert (await getTrends(23424977, 10, fetch)).len == 0
+  doAssert requests == 1
+
+suite "homepage trends":
+  test "concurrent requests share refreshes and failures are cached":
+    waitFor checkTrendsFailure()
 
 suite "translated links":
   test "upstream URL text cannot break out of the href attribute":

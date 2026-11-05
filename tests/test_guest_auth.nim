@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, json, strutils, times, unittest]
+import std/[asyncdispatch, httpcore, json, strutils, times, unittest, uri]
 import ../src/[auth, apiutils, types]
 
 let request = ApiReq(cookie: ApiUrl(endpoint: "UserTweets"))
@@ -99,6 +99,17 @@ proc checkFailedGuestActivation() {.async.} =
     invalidate(guestSession)
 
 suite "guest sessions":
+  test "guest mode uses the runtime bearer token":
+    expect ValueError:
+      setGuestAuth(" ", 1)
+    check not isGuestAuth()
+    setGuestAuth("guest-bearer-fixture", 1)
+    let
+      session = Session(kind: guest, guestToken: "guest-fixture")
+      headers = waitFor genHeaders(session, parseUri("https://x.com/i/api/graphql/test"), true)
+    check headers["authorization"] == "Bearer guest-bearer-fixture"
+    check headers["x-guest-token"] == "guest-fixture"
+
   test "guest authentication tokens are absent from diagnostics":
     var guestSession = Session(kind: guest, guestToken: "sensitive-guest-token",
                                guestCreated: epochTime().int)
@@ -167,3 +178,20 @@ suite "guest sessions":
     let selected = selectCookieSession(sessions, request)
     check selected == sessions[1]
     release(selected)
+
+  test "Grok 429s cool down only the translation endpoint":
+    let
+      translation = ApiReq(cookie: ApiUrl(endpoint: "2/grok/translation.json"))
+      sessions = [
+        Session(kind: cookie, authToken: "first", ct0: "csrf"),
+        Session(kind: cookie, authToken: "second", ct0: "csrf")
+      ]
+      headers = newHttpHeaders({"retry-after": "120"})
+    recordTranslationRateLimit(sessions[0], translation, Http429, headers)
+    let
+      nextTranslation = selectCookieSession(sessions, translation)
+      nextTimeline = selectCookieSession(sessions, request)
+    check nextTranslation == sessions[1]
+    check nextTimeline == sessions[0]
+    release(nextTranslation)
+    release(nextTimeline)

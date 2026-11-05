@@ -6,7 +6,6 @@ const
   consumerSecret* = "Bcs59EFbbsdF6Sl9Ng71smgStWEGwXXKSjYvPVt7qys"
   bearerToken* = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
   bearerToken2* = "Bearer AAAAAAAAAAAAAAAAAAAAAFXzAwAAAAAAMHCxpeSDG1gLNLghVe8d74hl6k4%3DRUMF4xAQLsbeBhTSRrCiQpJtxoGWeyHrDb5te2jpGskWDFW82F"
-  guestBearerToken* = ""
 
   graphUser* = "Gb-d6r0vxPOADdG62OEBpQ/UserByScreenName"
   graphUserV2* = "-ZzAG_Bckx16LMbEvHC3lg/UserResultByScreenNameQuery"
@@ -197,11 +196,6 @@ const
 
   birdwatchNotesVars* = """{
   "tweet_id": "$1"
-}""".replace(" ", "").replace("\n", "")
-
-  birdwatchContributorNotesVars* = """{
-  "count": 10, $2
-  "alias": "$1"
 }""".replace(" ", "").replace("\n", "")
 
   birdwatchOneNoteVars* = """{

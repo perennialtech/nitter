@@ -265,7 +265,6 @@ type
 
 const
   onDemandCacheTtl = 3600
-  onDemandFailureTtl = 60
   onDemandCacheMax = 500
 
 var onDemandCache: Table[string, OnDemandTrans]
@@ -307,7 +306,7 @@ proc cacheOnDemand(key, text, lang: string) =
 proc cachedOnDemand(key: string; found: var OnDemandTrans): bool =
   if key notin onDemandCache: return
   found = onDemandCache[key]
-  let ttl = if found.text.len > 0: onDemandCacheTtl else: onDemandFailureTtl
+  let ttl = if found.text.len > 0: onDemandCacheTtl else: translationRetrySeconds
   if epochTime().int - found.at > ttl:
     onDemandCache.del key
     return
@@ -477,11 +476,10 @@ proc getGraphBirdwatchNotes*(id: string): Future[BirdwatchNotes] {.async.} =
 
 proc getGraphBirdwatchHistory*(alias: string; after=""): Future[BirdwatchHistory] {.async.} =
   if alias.len == 0: return
-  let
-    cursor = cursorParam(after)
-    url = apiReq(graphBirdwatchContributorNotes, birdwatchContributorNotesVars % [alias, cursor],
-                 features=gqlFeatures)
-    js = await fetch(url)
+  var variables = %*{"count": 10, "alias": alias}
+  if after.len > 0:
+    variables["cursor"] = %after
+  let js = await fetch(apiReq(graphBirdwatchContributorNotes, $variables))
   result = parseBirdwatchHistory(js)
 
 proc getGraphBirdwatchOneNote*(noteId: string): Future[BirdwatchSingleNote] {.async.} =

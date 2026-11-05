@@ -26,7 +26,10 @@ let
   sessionsPath = getEnv("NITTER_SESSIONS_FILE", "./sessions.jsonl")
 
 if cfg.guestAuth:
-  setGuestAuth(true, cfg.guestPoolSize)
+  try:
+    setGuestAuth(getEnv("NITTER_GUEST_BEARER_TOKEN"), cfg.guestPoolSize)
+  except ValueError as e:
+    quit e.msg
 else:
   initSessionPool(cfg, sessionsPath)
 
@@ -105,8 +108,10 @@ routes:
     let body =
       if cfg.enableTrends:
         let
-          tab1 = await getTrends(cfg.trendsTab1Woeid, cfg.trendsMaxItems)
-          tab2 = await getTrends(cfg.trendsTab2Woeid, cfg.trendsMaxItems)
+          first = getTrends(cfg.trendsTab1Woeid, cfg.trendsMaxItems)
+          second = getTrends(cfg.trendsTab2Woeid, cfg.trendsMaxItems)
+          tab1 = await first
+          tab2 = await second
         trendsView.renderHomeBody(cfg.trendsTab1Name, tab1,
                                    cfg.trendsTab2Name, tab2, search)
       else:

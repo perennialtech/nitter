@@ -9,6 +9,7 @@ const
   rlReset = "x-rate-limit-reset"
   rlLimit = "x-rate-limit-limit"
   npCache = "x-np-cache"
+  translationRetrySeconds* = 60
   errorsToSkip = {null, doesntExist, tweetNotFound, timeout, unauthorized, badRequest}
 
 proc isCloudflareHtml*(body: string): bool =
@@ -31,7 +32,7 @@ var
   maxRetries: int
   retryDelayMs: int
   apiTimeoutMs: int = 15000
-  useGuestAuth: bool
+  guestAuthorization: string
   showRetweetTime: bool = true
   translationEnabled: bool = true
   onDemandTransEnabled: bool
@@ -55,16 +56,15 @@ proc setApiTimeoutMs*(ms: int) =
 proc getApiTimeoutMs*(): int =
   apiTimeoutMs
 
-proc setGuestAuth*(enabled: bool; poolSize = 1) =
-  if enabled and guestBearerToken.len == 0:
-    echo "[sessions] ERROR: guestAuth is enabled but guestBearerToken is empty in consts.nim. Guest mode requires a valid bearer token."
-    quit 1
-  useGuestAuth = enabled
-  if enabled:
-    setGuestPoolSize(poolSize)
+proc setGuestAuth*(token: string; poolSize: int) =
+  let token = token.strip
+  if token.len == 0:
+    raise newException(ValueError, "guestAuth requires NITTER_GUEST_BEARER_TOKEN")
+  guestAuthorization = "Bearer " & token
+  setGuestPoolSize(poolSize)
 
 proc isGuestAuth*(): bool =
-  useGuestAuth
+  guestAuthorization.len > 0
 
 proc setShowRetweetTime*(enabled: bool) =
   showRetweetTime = enabled
@@ -155,7 +155,7 @@ proc genHeaders*(session: Session, url: Uri, skipTid: bool): Future[HttpHeaders]
     result["sec-fetch-dest"] = "empty"
     result["sec-fetch-mode"] = "cors"
     result["sec-fetch-site"] = "same-origin"
-    result["authorization"] = guestBearerToken
+    result["authorization"] = guestAuthorization
     if not (disableTid or skipTid or "/1.1/" in url.path or isRestV2(url.path)):
       result["x-client-transaction-id"] = await genTid(url.path)
     registerGuestRequest(session)
@@ -182,7 +182,7 @@ proc activateGuestToken(): Future[Session] {.async.} =
   ## POST to the guest activation endpoint and wrap the returned token in a
   ## fresh guest Session, ready to be added to the pool
   let headers = newHttpHeaders({
-    "authorization": guestBearerToken,
+    "authorization": guestAuthorization,
     "content-type": "application/x-www-form-urlencoded",
     "accept": "*/*",
     "accept-language": "en-US,en;q=0.9",
@@ -257,7 +257,7 @@ proc getReadyGuestSession*(req: ApiReq;
     guestActivation = nil
 
 proc getAndValidateSession*(req: ApiReq): Future[Session] {.async.} =
-  if useGuestAuth:
+  if isGuestAuth():
     result = await getReadyGuestSession(req)
     if result.isNil or result.guestToken.len == 0:
       echo "[sessions] Empty guest token, session: ", result.pretty
@@ -276,6 +276,34 @@ proc getAndValidateSession*(req: ApiReq): Future[Session] {.async.} =
     if result.authToken.len == 0 or result.ct0.len == 0:
       echo "[sessions] Empty cookie credentials, session: ", result.pretty
       raise rateLimitError()
+
+proc recordRateLimit(session: Session; req: ApiReq; headers: HttpHeaders) =
+  if headers.getOrDefault(npCache) notin ["HIT", "STALE"] and headers.hasKey(rlRemaining):
+    let
+      remaining = parseInt(headers.getOrDefault(rlRemaining))
+      reset = parseInt(headers.getOrDefault(rlReset))
+      limit = parseInt(headers.getOrDefault(rlLimit))
+    session.setRateLimit(req, remaining, reset, limit)
+
+proc recordTranslationRateLimit*(session: Session; req: ApiReq; status: HttpCode;
+                                 headers: HttpHeaders) =
+  if status != Http429:
+    try:
+      recordRateLimit(session, req, headers)
+    except ValueError:
+      discard
+    return
+
+  proc headerInt(name: string; fallback: int): int =
+    try: parseInt(headers.getOrDefault(name))
+    except ValueError: fallback
+
+  let
+    now = epochTime().int
+    reset = headerInt(rlReset, 0)
+    retryAfter = max(1, headerInt("retry-after", translationRetrySeconds))
+    retryAt = if reset > now: reset else: now + retryAfter
+  session.setRateLimit(req, 0, retryAt, headerInt(rlLimit, 0))
 
 template fetchImpl(result, fetchBody) {.dirty.} =
   try:
@@ -301,13 +329,7 @@ template fetchImpl(result, fetchBody) {.dirty.} =
         echo "[sessions] transient 404 (empty body), retrying: ", url.path, ", session: ", session.pretty
         raise rateLimitError()
 
-    let cacheStatus = resp.headers.getOrDefault(npCache)
-    if cacheStatus notin ["HIT", "STALE"] and resp.headers.hasKey(rlRemaining):
-      let
-        remaining = parseInt(resp.headers[rlRemaining])
-        reset = parseInt(resp.headers[rlReset])
-        limit = parseInt(resp.headers[rlLimit])
-      session.setRateLimit(req, remaining, reset, limit)
+    recordRateLimit(session, req, resp.headers)
 
     if result.len > 0:
       if resp.headers.getOrDefault("content-encoding") == "gzip":
@@ -413,20 +435,14 @@ const
   grokTranslationUrl = "https://api.x.com/2/grok/translation.json"
   grokTranslationTimeoutMs = 45_000
 
-type GrokResponse = tuple[status, body: string]
-
-proc grokPost(headers: HttpHeaders; body: string): Future[GrokResponse] {.async.} =
+proc grokPost(headers: HttpHeaders; body: string): Future[(AsyncResponse, string)] {.async.} =
   useHttpClient(headers):
-    let (resp, payload) = await c.postBounded(grokTranslationUrl, body, grokTranslationTimeoutMs)
-    result.status = resp.status
-    result.body = payload
-    if resp.headers.getOrDefault("content-encoding") == "gzip":
-      result.body = uncompress(result.body, dfGzip)
-    if resp.status == $Http503:
+    result = await c.postBounded(grokTranslationUrl, body, grokTranslationTimeoutMs)
+    if result[0].code == Http503:
       raise newException(BadClientError, "Bad client")
 
 proc postGrokTranslation*(id, dstLang: string; contentType = "POST"): Future[string] {.async.} =
-  if useGuestAuth:
+  if isGuestAuth():
     raise newException(InternalError, "translation requires cookie sessions")
 
   let req = ApiReq(
@@ -443,12 +459,15 @@ proc postGrokTranslation*(id, dstLang: string; contentType = "POST"): Future[str
 
     let
       body = $(%*{"content_type": contentType, "id": id, "dst_lang": dstLang})
-      resp = await grokPost(headers, body)
-    if not resp.status.startsWith("200"):
-      echo "[translation] grok returned ", resp.status, " for post ", id, ": ",
-           resp.body[0 ..< min(resp.body.len, 300)], ", session: ", session.pretty
+      (resp, payload) = await grokPost(headers, body)
+    recordTranslationRateLimit(session, req, resp.code, resp.headers)
+    if resp.code != Http200:
+      echo "[translation] grok returned ", resp.status, " for post ", id,
+           ", session: ", session.pretty
       return ""
 
-    result = resp.body
+    result =
+      if resp.headers.getOrDefault("content-encoding") == "gzip": uncompress(payload, dfGzip)
+      else: payload
   finally:
     release(session)

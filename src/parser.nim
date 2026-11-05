@@ -12,9 +12,7 @@ proc parseVerifiedType(s: string; current: VerifiedType): VerifiedType =
 
 proc parseCommunityNote(js: JsonNode): string =
   let subtitle = js{"subtitle"}
-  result = subtitle{"text"}.getStr
-  with entities, subtitle{"entities"}:
-    result = expandBirdwatchEntities(result, entities)
+  result = expandBirdwatchEntities(subtitle{"text"}.getStr, subtitle{"entities"})
 
 proc parseNoteTrans(note: JsonNode): tuple[translatable, flagged: bool; text, lang: string] =
   result.flagged = note{"is_community_note_translatable"}.getBool
@@ -755,7 +753,8 @@ proc parseGraphTweet*(js: JsonNode): Tweet =
   if result.quote.isSome and not result.quote.get.available:
     let expanded = js{"legacy", "quoted_status_permalink", "expanded"}.getStr
     if expanded.len > 0:
-      result.quote.get.expUrl = parseUri(expanded).path
+      if expanded.isTwitterUrl:
+        result.quote.get.expUrl = expanded.localizeTwitterLink
       if result.quote.get.text.len == 0:
         let username = extractUsername(expanded)
         if username.len > 0:

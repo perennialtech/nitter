@@ -110,8 +110,9 @@ const twitterPageHosts = [
 
 proc localizeTwitterLink*(url: string): string =
   let uri = parseUri(url)
-  if uri.scheme in ["http", "https"] and uri.hostname in twitterPageHosts:
-    result = uri.path
+  if uri.scheme in ["http", "https"] and uri.hostname in twitterPageHosts and
+     not uri.path.startsWith("//") and '\\' notin uri.path:
+    result = if uri.path.len == 0: "/" else: uri.path
     if uri.query.len > 0: result &= "?" & uri.query
     if uri.anchor.len > 0: result &= "#" & uri.anchor
   else:

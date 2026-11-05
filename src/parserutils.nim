@@ -199,7 +199,7 @@ proc extractUrls(result: var seq[ReplaceSlice]; js: JsonNode;
     if slice.a < textLen:
       result.add ReplaceSlice(kind: rkRemove, slice: slice)
   else:
-    result.add ReplaceSlice(kind: rkUrl, url: url.localizeTwitterLink,
+    result.add ReplaceSlice(kind: rkUrl, url: url,
                             display: url.shortLink, slice: slice)
 
 proc extractHashtags(result: var seq[ReplaceSlice]; js: JsonNode) =
@@ -424,40 +424,42 @@ proc localizeExternalLink(url: string): string =
   if url.startsWith(tco): "/t.co/" & url[tco.len .. ^1]
   else: url.localizeTwitterLink
 
-proc expandBirdwatchEntities*(text: string; entities: JsonNode): string =
-  let runes = text.toRunes
-  var replacements: seq[ReplaceSlice]
-
-  for entity in entities:
-    let
-      fromIdx = entity{"fromIndex"}.getInt
-      toIdx = entity{"toIndex"}.getInt
-      url = entity{"ref", "url"}.getStr.localizeExternalLink
-    if url.len > 0:
-      replacements.add ReplaceSlice(
-        kind: rkUrl,
-        slice: fromIdx ..< toIdx,
-        url: url,
-        display: $runes[fromIdx ..< min(toIdx, runes.len)]
-      )
-
-  replacements.sort(cmp)
-  result = runes.replacedWith(replacements, 0 ..< runes.len)
-
-proc escapeTranslation(text: string): string =
+proc escapeEntityText(text: string): string =
   text.multiReplace(("&", unicodeAmp), ("<", unicodeOpen), (">", unicodeClose))
 
-proc unescapeTranslation(html: string): string =
+proc unescapeEntityText(html: string): string =
   html.multiReplace((unicodeAmp, "&amp;"), (unicodeOpen, xmlOpen), (unicodeClose, xmlClose))
 
 proc getIndex(js: JsonNode): int =
   try:
-    if js.kind == JString: parseInt(js.getStr) else: js.getInt(-1)
+    let index = if js.kind == JString: parseInt(js.getStr) else: js.getInt(-1)
+    max(index, -1)
   except ValueError:
     -1
 
+proc expandBirdwatchEntities*(text: string; entities: JsonNode): string =
+  if entities.kind != JArray: return linkifyBirdwatchUrls(text)
+
+  let runes = text.escapeEntityText.toRunes
+  var replacements: seq[ReplaceSlice]
+
+  for entity in entities:
+    let
+      fromIdx = select(entity{"fromIndex"}, entity{"from_index"}).getIndex
+      toIdx = select(entity{"toIndex"}, entity{"to_index"}).getIndex
+      url = entity{"ref", "url"}.getStr.localizeExternalLink
+    if url.len > 0 and fromIdx >= 0 and toIdx > fromIdx and toIdx <= runes.len:
+      replacements.add ReplaceSlice(kind: rkUrl, slice: fromIdx ..< toIdx,
+                                    url: url, display: $runes[fromIdx ..< toIdx])
+
+  if replacements.len == 0:
+    return linkifyBirdwatchUrls(text)
+
+  replacements.sort(cmp)
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
+
 proc expandTranslation*(text: string; entities: JsonNode): string =
-  let runes = text.escapeTranslation.toRunes
+  let runes = text.escapeEntityText.toRunes
   var replacements: seq[ReplaceSlice]
 
   template slice(js: JsonNode): Slice[int] =
@@ -488,10 +490,10 @@ proc expandTranslation*(text: string; entities: JsonNode): string =
   replacements.deduplicate
   replacements.sort(cmp)
   result = runes.replacedWith(replacements, 0 .. runes.len).strip(leading=false)
-  result = result.unescapeTranslation
+  result = result.unescapeEntityText
 
 proc expandNoteTranslation*(text: string; entities: JsonNode): string =
-  let runes = text.escapeTranslation.toRunes
+  let runes = text.escapeEntityText.toRunes
   var replacements: seq[ReplaceSlice]
 
   if entities.kind == JArray:
@@ -510,12 +512,12 @@ proc expandNoteTranslation*(text: string; entities: JsonNode): string =
         )
 
   replacements.sort(cmp)
-  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeTranslation
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
 
 proc expandGrokTranslation*(text: string;
                             links: seq[tuple[url, expanded: string]]): string =
   let
-    escaped = text.escapeTranslation
+    escaped = text.escapeEntityText
     runes = escaped.toRunes
   var replacements: seq[ReplaceSlice]
 
@@ -537,7 +539,7 @@ proc expandGrokTranslation*(text: string;
 
   replacements.deduplicate
   replacements.sort(cmp)
-  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeTranslation
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
 
 proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
   let url =
