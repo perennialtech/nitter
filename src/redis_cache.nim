@@ -96,9 +96,15 @@ proc initRedisPool*(cfg: Config) {.async.} =
     quit(1)
 
 template uidKey(name: string): string = "pid:" & $(hash(name) div 1_000_000)
-template userKey(name: string): string = "p:" & name
+# Flatty encodes object fields positionally. Keep old layouts out of new
+# readers; entries in the old namespaces expire on their existing TTLs.
+template userKey(name: string): string = "p2:" & name
 template listKey(l: List): string = "l:" & l.id
-template tweetKey(id: int64): string = "t:" & $id
+template tweetKey(id: int64): string = "t2:" & $id
+template communityKey(id: string): string = "cm2:" & id
+template communityModeratorsKey(id: string): string = "cmm2:" & id
+template broadcastKey(id: string): string = "bc2:" & id
+template audioSpaceKey(id: string): string = "sp2:" & id
 
 proc get(query: string): Future[string] {.async.} =
   pool.withAcquire(r):
@@ -164,7 +170,7 @@ proc getUserId*(username: string): Future[string] {.async.} =
       return user.id
 
 proc getCachedUser*(username: string; fetch=true): Future[User] {.async.} =
-  let prof = await get("p:" & toLower(username))
+  let prof = await get(toLower(username).userKey)
   if prof != redisNil:
     prof.deserialize(User)
   elif fetch:
@@ -198,11 +204,11 @@ proc getCachedUsername*(userId: string): Future[string] {.async.} =
 
 proc cache*(data: Broadcast) {.async.} =
   if data.id.len == 0: return
-  await setEx("bc:" & data.id, baseCacheTime, compress(toFlatty(data)))
+  await setEx(data.id.broadcastKey, baseCacheTime, compress(toFlatty(data)))
 
 proc getCachedBroadcast*(id: string): Future[Broadcast] {.async.} =
   if id.len == 0: return
-  let cached = await get("bc:" & id)
+  let cached = await get(id.broadcastKey)
   if cached != redisNil:
     cached.deserialize(Broadcast)
   else:
@@ -213,11 +219,11 @@ proc getCachedBroadcast*(id: string): Future[Broadcast] {.async.} =
 proc cache*(data: AudioSpace) {.async.} =
   if data.id.len == 0: return
   let ttl = if data.state == "RUNNING": baseCacheTime div 6 else: baseCacheTime
-  await setEx("sp:" & data.id, ttl, compress(toFlatty(data)))
+  await setEx(data.id.audioSpaceKey, ttl, compress(toFlatty(data)))
 
 proc getCachedAudioSpace*(id: string): Future[AudioSpace] {.async.} =
   if id.len == 0: return
-  let cached = await get("sp:" & id)
+  let cached = await get(id.audioSpaceKey)
   if cached != redisNil:
     cached.deserialize(AudioSpace)
   else:
@@ -249,11 +255,11 @@ proc getCachedPhotoRail*(id: string): Future[PhotoRail] {.async.} =
 
 proc cache*(data: Community) {.async.} =
   if data.id.len == 0: return
-  await setEx("cm:" & data.id, listCacheTime, compress(toFlatty(data)))
+  await setEx(data.id.communityKey, listCacheTime, compress(toFlatty(data)))
 
 proc getCachedCommunity*(id: string): Future[Community] {.async.} =
   if id.len == 0: return
-  let cached = await get("cm:" & id)
+  let cached = await get(id.communityKey)
   if cached != redisNil:
     cached.deserialize(Community)
   else:
@@ -262,13 +268,13 @@ proc getCachedCommunity*(id: string): Future[Community] {.async.} =
 
 proc getCachedCommunityModerators*(id: string): Future[seq[User]] {.async.} =
   if id.len == 0: return
-  let cached = await get("cmm:" & id)
+  let cached = await get(id.communityModeratorsKey)
   if cached != redisNil:
     cached.deserialize(seq[User])
   else:
     let mods = await getGraphCommunityModerators(id)
     result = mods.content
-    await setEx("cmm:" & id, listCacheTime, compress(toFlatty(result)))
+    await setEx(id.communityModeratorsKey, listCacheTime, compress(toFlatty(result)))
 
 proc getCachedList*(username=""; slug=""; id=""): Future[List] {.async.} =
   let list = if id.len == 0: redisNil
