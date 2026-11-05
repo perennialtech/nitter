@@ -222,21 +222,18 @@ type GuestActivator* = proc(): Future[Session] {.closure.}
 
 proc getReadyGuestSession*(req: ApiReq;
                            activate: GuestActivator = activateGuestToken): Future[Session] {.async.} =
-  result = getGuestSession(req)
-  if not result.isNil: return
+  while true:
+    result = getGuestSession(req)
+    if not result.isNil: return
 
-  # An activation is shared by concurrent requests. Without this gate each
-  # request can observe an empty pool and create another token before the
-  # preceding activation completes.
-  if guestActivation != nil:
+    # Check for another free slot after the current activation. A burst can
+    # fill the new session before every waiter has acquired a lease.
+    let activation = guestActivation
+    if activation.isNil: break
     try:
-      discard await guestActivation
+      discard await activation
     except CatchableError:
       raise rateLimitError()
-    result = getGuestSession(req)
-    if result.isNil:
-      raise rateLimitError()
-    return
 
   var stale = findStaleGuestSession(req)
   if not stale.isNil and stale.pending == 0:

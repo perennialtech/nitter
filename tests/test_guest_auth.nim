@@ -32,6 +32,39 @@ proc checkConcurrentGuestActivation() {.async.} =
   finally:
     invalidate(guestSession)
 
+proc checkConcurrentGuestPoolGrowth() {.async.} =
+  let gates = [newFuture[Session]("first activation"),
+               newFuture[Session]("second activation")]
+  var activations = 0
+  proc activate(): Future[Session] =
+    result = gates[activations]
+    inc activations
+
+  setGuestPoolSize(2)
+  setMaxConcurrentReqs(1)
+  var
+    a = Session(kind: guest, guestToken: "first", guestCreated: epochTime().int)
+    b = Session(kind: guest, guestToken: "second", guestCreated: epochTime().int)
+  try:
+    let
+      first = getReadyGuestSession(request, activate)
+      second = getReadyGuestSession(request, activate)
+    doAssert activations == 1, "activations must remain serialized"
+
+    gates[0].complete(a)
+    doAssert (await first) == a
+    await sleepAsync(0)
+    doAssert activations == 2, "a waiter must use free pool capacity"
+    gates[1].complete(b)
+    doAssert (await second) == b
+    release(a)
+    release(b)
+  finally:
+    invalidate(a)
+    invalidate(b)
+    setGuestPoolSize(1)
+    setMaxConcurrentReqs(2)
+
 proc checkFailedGuestActivation() {.async.} =
   let gate = newFuture[Session]("failed guest activation")
   var activations = 0
@@ -107,6 +140,9 @@ suite "guest sessions":
 
   test "concurrent activation respects configured pool size":
     waitFor checkConcurrentGuestActivation()
+
+  test "waiting callers can fill free guest pool slots":
+    waitFor checkConcurrentGuestPoolGrowth()
 
   test "failed activation releases the reservation":
     waitFor checkFailedGuestActivation()
