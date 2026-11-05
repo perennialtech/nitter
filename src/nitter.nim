@@ -13,6 +13,9 @@ import routes/[
   preferences, timeline, status, media, search, rss, list, community, debug,
   unsupported, embed, resolver, broadcast, space, article, router_utils]
 
+when not defined(nitterReturnDestroyPatched):
+  {.error: "Build Nitter with a compiler patched by tools/patch-nim.sh".}
+
 const instancesUrl = "https://github.com/zedeus/nitter/wiki/Instances"
 const issuesUrl = "https://github.com/zedeus/nitter/issues"
 
