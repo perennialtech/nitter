@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import std/[asyncdispatch, unittest]
-import ../src/[api, apiutils, consts]
+import ../src/[api, apiutils, consts, parserutils]
 
 proc checkTranslationCoalescing() {.async.} =
   setOnDemandTranslation(true, "en")
@@ -52,3 +52,14 @@ suite "on-demand translations":
     waitFor checkTranslationCoalescing()
   test "failed translations are coalesced and negatively cached":
     waitFor checkTranslationFailure()
+
+suite "translated links":
+  test "upstream URL text cannot break out of the href attribute":
+    let link = "https://t.co/example"
+    let expanded = "https://example.com/?x=\" onmouseover=\"alert(1)&y=2"
+    let html = expandGrokTranslation(link, @[(url: link, expanded: expanded)])
+    check html == "<a href=\"https://example.com/?x=&quot; onmouseover=&quot;alert(1)&amp;y=2\">" &
+                  "https://example.com/?x=&quot; onmouseover=&quot;alert(1)&amp;y=2</a>"
+  test "unsafe schemes remain plain text":
+    let link = "https://t.co/example"
+    check expandGrokTranslation(link, @[(url: link, expanded: "javascript:alert(1)")]) == link

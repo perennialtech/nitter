@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[times, macros, htmlgen, options, algorithm, re]
+import std/[times, macros, htmlgen, options, algorithm, re, uri]
 import std/strutils except escape
 import std/unicode except strip
 from xmltree import escape
@@ -232,11 +232,11 @@ proc replacedWith(runes: seq[Rune]; repls: openArray[ReplaceSlice];
         let
           name = $runes[rep.slice.a.succ .. rep.slice.b]
           symbol = $runes[rep.slice.a]
-        result.add a(symbol & name, href = "/search?f=tweets&q=%23" & name)
+        result.add a(symbol & name, href = "/search?f=tweets&q=%23" & escape(name))
     of rkMention:
-      result.add a($runes[rep.slice], href = rep.url, title = escape(rep.display))
+      result.add a($runes[rep.slice], href = escape(rep.url), title = escape(rep.display))
     of rkUrl:
-      result.add a(escape(rep.display), href = rep.url)
+      result.add a(escape(rep.display), href = escape(rep.url))
     of rkRemove:
       discard
 
@@ -416,6 +416,10 @@ proc expandNoteTweetEntities*(tweet: Tweet; js: JsonNode) =
   tweet.text = tweet.text.multiReplace((unicodeOpen, xmlOpen), (unicodeClose, xmlClose))
 
 proc localizeExternalLink(url: string): string =
+  let target = parseUri(url)
+  if target.scheme.toLowerAscii notin ["http", "https"] or target.hostname.len == 0:
+    return ""
+
   const tco = "https://t.co/"
   if url.startsWith(tco): "/t.co/" & url[tco.len .. ^1]
   else: url.localizeTwitterLink
@@ -428,12 +432,12 @@ proc expandBirdwatchEntities*(text: string; entities: JsonNode): string =
     let
       fromIdx = entity{"fromIndex"}.getInt
       toIdx = entity{"toIndex"}.getInt
-      url = entity{"ref", "url"}.getStr
+      url = entity{"ref", "url"}.getStr.localizeExternalLink
     if url.len > 0:
       replacements.add ReplaceSlice(
         kind: rkUrl,
         slice: fromIdx ..< toIdx,
-        url: url.localizeExternalLink,
+        url: url,
         display: $runes[fromIdx ..< min(toIdx, runes.len)]
       )
 
@@ -461,10 +465,12 @@ proc expandTranslation*(text: string; entities: JsonNode): string =
 
   with urls, entities{"urls"}:
     for u in urls:
-      let url = u{"expanded_url"}.getStr
-      if url.len > 0:
+      let
+        url = u{"expanded_url"}.getStr
+        href = url.localizeExternalLink
+      if href.len > 0:
         replacements.add ReplaceSlice(kind: rkUrl, slice: u.slice,
-                                      url: url.localizeExternalLink,
+                                      url: href,
                                       display: u{"display_url"}.getStr(url.shortLink))
 
   for key in ["hashtags", "symbols"]:
@@ -494,12 +500,12 @@ proc expandNoteTranslation*(text: string; entities: JsonNode): string =
         fromIdx = e{"from_index"}.getIndex
         toIdx = e{"to_index"}.getIndex
         r = e{"ref"}
-        url = r{"expanded_url"}.getStr(r{"url"}.getStr)
+        url = r{"expanded_url"}.getStr(r{"url"}.getStr).localizeExternalLink
       if url.len > 0 and fromIdx >= 0 and toIdx > fromIdx and fromIdx < runes.len:
         replacements.add ReplaceSlice(
           kind: rkUrl,
           slice: fromIdx ..< toIdx,
-          url: url.localizeExternalLink,
+          url: url,
           display: r{"display_url"}.getStr($runes[fromIdx ..< min(toIdx, runes.len)])
         )
 
@@ -520,12 +526,14 @@ proc expandGrokTranslation*(text: string;
     let
       start = escaped[0 ..< idx].runeLen
       target = if link.expanded.len > 0: link.expanded else: link.url
-    replacements.add ReplaceSlice(
-      kind: rkUrl,
-      slice: start ..< start + link.url.runeLen,
-      url: target.localizeExternalLink,
-      display: target
-    )
+      href = target.localizeExternalLink
+    if href.len > 0:
+      replacements.add ReplaceSlice(
+        kind: rkUrl,
+        slice: start ..< start + link.url.runeLen,
+        url: href,
+        display: target
+      )
 
   replacements.deduplicate
   replacements.sort(cmp)
