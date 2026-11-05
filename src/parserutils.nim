@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[times, macros, htmlgen, options, algorithm, re]
+import std/[times, macros, htmlgen, options, algorithm, re, sets, uri]
 import std/strutils except escape
 import std/unicode except strip
 from xmltree import escape
@@ -9,6 +9,7 @@ import types, utils, formatters
 const
   unicodeOpen = "\uFFFA"
   unicodeClose = "\uFFFB"
+  unicodeAmp = "\uFFF9"
   xmlOpen = escape("<")
   xmlClose = escape(">")
 
@@ -231,11 +232,11 @@ proc replacedWith(runes: seq[Rune]; repls: openArray[ReplaceSlice];
         let
           name = $runes[rep.slice.a.succ .. rep.slice.b]
           symbol = $runes[rep.slice.a]
-        result.add a(symbol & name, href = "/search?f=tweets&q=%23" & name)
+        result.add a(symbol & name, href = "/search?f=tweets&q=%23" & escape(name))
     of rkMention:
-      result.add a($runes[rep.slice], href = rep.url, title = escape(rep.display))
+      result.add a($runes[rep.slice], href = escape(rep.url), title = escape(rep.display))
     of rkUrl:
-      result.add a(escape(rep.display), href = rep.url)
+      result.add a(escape(rep.display), href = escape(rep.url))
     of rkRemove:
       discard
 
@@ -414,25 +415,142 @@ proc expandNoteTweetEntities*(tweet: Tweet; js: JsonNode) =
 
   tweet.text = tweet.text.multiReplace((unicodeOpen, xmlOpen), (unicodeClose, xmlClose))
 
+proc localizeExternalLink(url: string): string =
+  let target = parseUri(url)
+  if target.scheme.toLowerAscii notin ["http", "https"] or target.hostname.len == 0:
+    return ""
+
+  const tco = "https://t.co/"
+  if url.startsWith(tco): "/t.co/" & url[tco.len .. ^1]
+  else: url.localizeTwitterLink
+
+proc escapeEntityText(text: string): string =
+  text.multiReplace(("&", unicodeAmp), ("<", unicodeOpen), (">", unicodeClose))
+
+proc unescapeEntityText(html: string): string =
+  html.multiReplace((unicodeAmp, "&amp;"), (unicodeOpen, xmlOpen), (unicodeClose, xmlClose))
+
+proc getIndex(js: JsonNode): int =
+  try:
+    let index = if js.kind == JString: parseInt(js.getStr) else: js.getInt(-1)
+    max(index, -1)
+  except ValueError:
+    -1
+
 proc expandBirdwatchEntities*(text: string; entities: JsonNode): string =
-  let runes = text.toRunes
+  if entities.kind != JArray: return linkifyBirdwatchUrls(text)
+
+  let runes = text.escapeEntityText.toRunes
   var replacements: seq[ReplaceSlice]
 
   for entity in entities:
     let
-      fromIdx = entity{"from_index"}.getInt
-      toIdx = entity{"to_index"}.getInt
-      url = entity{"ref", "url"}.getStr
-    if url.len > 0:
-      replacements.add ReplaceSlice(
-        kind: rkUrl,
-        slice: fromIdx ..< toIdx,
-        url: url,
-        display: $runes[fromIdx ..< min(toIdx, runes.len)]
-      )
+      fromIdx = select(entity{"fromIndex"}, entity{"from_index"}).getIndex
+      toIdx = select(entity{"toIndex"}, entity{"to_index"}).getIndex
+      url = entity{"ref", "url"}.getStr.localizeExternalLink
+    if url.len > 0 and fromIdx >= 0 and toIdx > fromIdx and toIdx <= runes.len:
+      replacements.add ReplaceSlice(kind: rkUrl, slice: fromIdx ..< toIdx,
+                                    url: url, display: $runes[fromIdx ..< toIdx])
+
+  if replacements.len == 0:
+    return linkifyBirdwatchUrls(text)
 
   replacements.sort(cmp)
-  result = runes.replacedWith(replacements, 0 ..< runes.len)
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
+
+proc expandTranslation*(text: string; entities: JsonNode): string =
+  let runes = text.escapeEntityText.toRunes
+  var replacements: seq[ReplaceSlice]
+
+  template slice(js: JsonNode): Slice[int] =
+    js{"indices"}{0}.getIndex ..< js{"indices"}{1}.getIndex
+
+  with urls, entities{"urls"}:
+    for u in urls:
+      let
+        url = u{"expanded_url"}.getStr
+        href = url.localizeExternalLink
+      if href.len > 0:
+        replacements.add ReplaceSlice(kind: rkUrl, slice: u.slice,
+                                      url: href,
+                                      display: u{"display_url"}.getStr(url.shortLink))
+
+  for key in ["hashtags", "symbols"]:
+    with tags, entities{key}:
+      for tag in tags:
+        replacements.add ReplaceSlice(kind: rkHashtag, slice: tag.slice)
+
+  with mentions, entities{"user_mentions"}:
+    for mention in mentions:
+      let name = mention{"screen_name"}.getStr
+      if name.len > 0:
+        replacements.add ReplaceSlice(kind: rkMention, slice: mention.slice,
+                                      url: "/" & name, display: mention{"name"}.getStr)
+
+  replacements.deduplicate
+  replacements.sort(cmp)
+  result = runes.replacedWith(replacements, 0 .. runes.len).strip(leading=false)
+  result = result.unescapeEntityText
+
+proc expandNoteTranslation*(text: string; entities: JsonNode): string =
+  let runes = text.escapeEntityText.toRunes
+  var replacements: seq[ReplaceSlice]
+
+  if entities.kind == JArray:
+    for e in entities:
+      let
+        fromIdx = e{"from_index"}.getIndex
+        toIdx = e{"to_index"}.getIndex
+        r = e{"ref"}
+        url = r{"expanded_url"}.getStr(r{"url"}.getStr).localizeExternalLink
+      if url.len > 0 and fromIdx >= 0 and toIdx > fromIdx and fromIdx < runes.len:
+        replacements.add ReplaceSlice(
+          kind: rkUrl,
+          slice: fromIdx ..< toIdx,
+          url: url,
+          display: r{"display_url"}.getStr($runes[fromIdx ..< min(toIdx, runes.len)])
+        )
+
+  replacements.sort(cmp)
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText
+
+proc expandGrokTranslation*(text: string;
+                            links: seq[tuple[url, expanded: string]]): string =
+  let runes = text.escapeEntityText.toRunes
+  var
+    replacements: seq[ReplaceSlice]
+    seen: HashSet[string]
+
+  for link in links:
+    if link.url.len == 0 or link.url in seen: continue
+    let
+      target = if link.expanded.len > 0: link.expanded else: link.url
+      href = target.localizeExternalLink
+    if href.len == 0: continue
+    seen.incl link.url
+
+    var offset = 0
+    while true:
+      let idx = text.find(link.url, offset)
+      if idx < 0: break
+      let start = text[0 ..< idx].runeLen
+      replacements.add ReplaceSlice(
+        kind: rkUrl,
+        slice: start ..< start + link.url.runeLen,
+        url: href,
+        display: target
+      )
+      offset = idx + link.url.len
+
+  # An expanded source URL can be a prefix of another reported URL.
+  replacements.sort(proc (a, b: ReplaceSlice): int =
+    result = cmp(a.slice.a, b.slice.a)
+    if result == 0: result = cmp(b.slice.b, a.slice.b))
+  var disjoint: seq[ReplaceSlice]
+  for replacement in replacements:
+    if disjoint.len == 0 or replacement.slice.a > disjoint[^1].slice.b:
+      disjoint.add replacement
+  result = runes.replacedWith(disjoint, 0 .. runes.len).unescapeEntityText
 
 proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
   let url =

@@ -4,7 +4,7 @@ import karax/[karaxdsl, vdom, vstyles]
 from jester import Request
 
 import renderutils
-import ".."/[types, utils, formatters]
+import ".."/[types, utils, formatters, apiutils]
 
 const doctype = "<!DOCTYPE html>\n"
 
@@ -26,8 +26,8 @@ proc renderArticleCard(preview: ArticlePreview; prefs: Prefs): VNode =
           if preview.previewText.len > 0:
             p(class="card-description"): text preview.previewText
 
-proc renderHeader(tweet: Tweet; retweet: string; pinned: bool; prefs: Prefs;
-                   path = ""): VNode =
+proc renderHeader(tweet: Tweet; retweet: string; retweeter: string; retweetTweet: Tweet;
+                   pinned: bool; prefs: Prefs; path = ""): VNode =
   buildHtml(tdiv):
     if pinned:
       let pinnedLabel =
@@ -37,7 +37,14 @@ proc renderHeader(tweet: Tweet; retweet: string; pinned: bool; prefs: Prefs;
         span: icon("pin", pinnedLabel)
     elif retweet.len > 0:
       tdiv(class="retweet-header"):
-        span: icon("retweet", retweet & " retweeted")
+        a(href="/" & retweeter):
+          icon("retweet", retweet & " retweeted")
+        if showRetweetTimeEnabled():
+          span(class="tweet-date retweet-date"):
+            span(class="retweet-date-sep"):
+              text " · "
+            a(href=getLink(retweetTweet), title=retweetTweet.getTime):
+              text retweetTweet.getShortTime
 
     tdiv(class="tweet-header"):
       a(class="tweet-avatar", href=("/" & tweet.user.username)):
@@ -55,6 +62,8 @@ proc renderHeader(tweet: Tweet; retweet: string; pinned: bool; prefs: Prefs;
         span(class="tweet-date"):
           a(href=getLink(tweet), title=tweet.getTime):
             text tweet.getShortTime
+
+      profileLabel(tweet.user)
 
 proc renderAltText(altText: string): VNode =
   buildHtml(p(class="alt-text")):
@@ -250,16 +259,31 @@ proc renderCard(card: Card; prefs: Prefs; path: string): VNode =
         tdiv(class="card-content-container"):
           renderCardContent(card)
 
-func formatStat(stat: int): string =
-  if stat > 0: insertSep($stat, ',')
-  else: ""
+func formatStat(stat: int; abbreviate: bool): string =
+  if stat <= 0: return ""
+  if not abbreviate:
+    return insertSep($stat, ',')
+  if stat >= 1_000_000:
+    formatFloat(stat.float / 1_000_000, ffDecimal, 1) & "M"
+  elif stat >= 1_000:
+    formatFloat(stat.float / 1_000, ffDecimal, 1) & "K"
+  else:
+    $stat
 
-proc renderStats*(stats: TweetStats): VNode =
+proc renderStats*(stats: TweetStats; prefs: Prefs; tweet: Tweet): VNode =
   buildHtml(tdiv(class="tweet-stats")):
-    span(class="tweet-stat"): icon "comment", formatStat(stats.replies)
-    span(class="tweet-stat"): icon "retweet", formatStat(stats.retweets)
-    span(class="tweet-stat"): icon "heart", formatStat(stats.likes)
-    span(class="tweet-stat"): icon "views", formatStat(stats.views)
+    span(class="tweet-stat"): icon "comment", formatStat(stats.replies, prefs.abbreviateStats)
+    a(href="/" & tweet.user.username & "/status/" & $tweet.id & "/retweets", class="tweet-stat", title="Retweets"):
+      icon "retweet", formatStat(stats.retweets, prefs.abbreviateStats)
+    a(href="/" & tweet.user.username & "/status/" & $tweet.id & "/quotes", class="tweet-stat", title="Quote Tweets"):
+      icon "quote", formatStat(stats.quotes, prefs.abbreviateStats)
+    span(class="tweet-stat"): icon "heart", formatStat(stats.likes, prefs.abbreviateStats)
+    span(class="tweet-stat"): icon "views", formatStat(stats.views, prefs.abbreviateStats)
+    if tweet.hasBirdwatch:
+      a(href="/i/birdwatch/t/" & $tweet.id, class="tweet-stat", title="Community Notes"):
+        icon "group"
+    if not prefs.hideTweetSource:
+      span(class="tweet-stat source"): text stripHtml(stats.source.replace("Twitter for ", "").replace("Twitter ", ""))
 
 proc renderReply(tweet: Tweet): VNode =
   buildHtml(tdiv(class="replying-to")):
@@ -290,28 +314,108 @@ proc renderLatestPost(username: string; id: int64): VNode =
     a(href=getLink(id, username)):
       text "See the latest post"
 
-proc renderCommunityNote(note: string; prefs: Prefs): VNode =
+proc translateUrl(tweet: Tweet; path: string; mainTweet: bool): string =
+  if mainTweet:
+    let base = path.split('#')[0]
+    return base & (if '?' in base: "&" else: "?") & "tr=1#m"
+  getLink(tweet, focus=false) & "?tr=1#m"
+
+proc withTrParam(url, value: string): string =
+  let
+    parts = url.split('#', 1)
+    base = parts[0].split('?', 1)
+  var params: seq[string]
+  if base.len > 1:
+    params = base[1].split('&').filterIt(it.len > 0 and not it.startsWith("tr="))
+  params.add "tr=" & value
+  result = base[0] & "?" & params.join("&")
+  if parts.len > 1:
+    result &= "#" & parts[1]
+
+proc renderTranslateLabel*(active, requested: bool; lang, url: string;
+                           target = ""): VNode =
+  buildHtml(tdiv(class="tweet-translate")):
+    if active:
+      if target.len > 0:
+        text "Translated to " & langName(target)
+      elif lang.len > 0:
+        text "Translated from " & langName(lang)
+      else:
+        text "Translated"
+      if url.len > 0:
+        text " · "
+        a(href=url.withTrParam("0")): text "show original"
+    elif requested:
+      text "Translation unavailable"
+    else:
+      a(href=url): text "See translation"
+
+proc canTranslateOnDemand(tweet: Tweet): bool =
+  onDemandTranslation() and tweet.isTranslatable and tweet.translation.len == 0 and
+    not (tweet.translatable and not tweet.showTrans)
+
+proc renderTranslateOnDemandForm*(path, id: string; note = false; backPath = ""): VNode =
+  buildHtml(form(class="tweet-translate", `method`="post", action=path)):
+    input(`type`="hidden", name="sig", value=translationSignature(id, note))
+    if backPath.len > 0:
+      input(`type`="hidden", name="r", value=backPath)
+    button(`type`="submit", title=(if note: "Ask Grok to translate this note"
+                                 else: "Ask Grok to translate this post")):
+      text "Translate to " & langName(onDemandTranslationLang())
+
+proc renderTranslateOnDemand(tweet: Tweet): VNode =
+  renderTranslateOnDemandForm(getLink(tweet, focus=false) & "/translate", $tweet.id)
+
+proc noteCanTranslateOnDemand*(flagged, translatable, requested: bool;
+                               translation: string): bool =
+  onDemandTranslation() and flagged and translation.len == 0 and
+    not (translatable and not requested)
+
+proc renderCommunityNote(note: string; prefs: Prefs; tweet: Tweet = nil;
+                         transUrl = ""): VNode =
+  let
+    hasTrans = enableTranslation() and tweet != nil and tweet.noteTranslatable
+    active = hasTrans and tweet.noteTranslation.len > 0 and
+             (tweet.showTrans or prefs.autoTranslate)
+    text = if active: tweet.noteTranslation else: note
+    onDemand = tweet != nil and tweet.noteId.len > 0 and
+               noteCanTranslateOnDemand(tweet.noteIsTranslatable, tweet.noteTranslatable,
+                                        tweet.showTrans, tweet.noteTranslation)
+
   buildHtml(tdiv(class="community-note")):
     tdiv(class="community-note-header"):
       icon "group"
       span: text "Community note"
+    if onDemand:
+      renderTranslateOnDemandForm("/i/birdwatch/n/" & tweet.noteId & "/translate",
+                                  tweet.noteId, note=true, backPath="/i/status/" & $tweet.id)
+    elif hasTrans:
+      renderTranslateLabel(active, tweet.showTrans, tweet.noteTransLang, transUrl,
+                           tweet.noteTransTarget)
     tdiv(class="community-note-text", dir="auto"):
-      verbatim replaceUrls(note, prefs)
+      verbatim replaceUrls(text, prefs)
 
 proc renderQuoteMedia(quote: Tweet; prefs: Prefs; path: string): VNode =
   buildHtml(tdiv(class="quote-media-container")):
     renderMedia(quote.media, prefs, path)
 
-proc renderQuote(quote: Tweet; prefs: Prefs; path: string): VNode =
+proc renderQuote(quote: Tweet; prefs: Prefs; path: string; transUrl = ""): VNode =
   if not quote.available:
+    let href = if quote.expUrl.len > 0: quote.expUrl else: getLink(quote, focus=false)
     return buildHtml(tdiv(class="quote unavailable")):
-      a(class="unavailable-quote", href=getLink(quote, focus=false)):
+      a(class="unavailable-quote", href=href):
         if quote.tombstone.len > 0:
           text quote.tombstone
         elif quote.text.len > 0:
           text quote.text
         else:
           text "This tweet is unavailable"
+
+  let
+    transOn = enableTranslation() and quote.translatable
+    transActive = transOn and quote.translation.len > 0 and
+                  (quote.showTrans or prefs.autoTranslate)
+    quoteText = if transActive: quote.translation else: quote.text
 
   buildHtml(tdiv(class="quote quote-big")):
     a(class="quote-link", href=getLink(quote))
@@ -327,12 +431,17 @@ proc renderQuote(quote: Tweet; prefs: Prefs; path: string): VNode =
         a(href=getLink(quote), title=quote.getTime):
           text quote.getShortTime
 
+    profileLabel(quote.user)
+
     if quote.reply.len > 0:
       renderReply(quote)
 
+    if transOn:
+      renderTranslateLabel(transActive, quote.showTrans, quote.transLang, transUrl)
+
     if quote.text.len > 0:
       tdiv(class="quote-text", dir="auto"):
-        verbatim replaceUrls(quote.text, prefs)
+        verbatim replaceUrls(quoteText, prefs)
 
     if quote.media.len > 0:
       renderQuoteMedia(quote, prefs, path)
@@ -341,7 +450,7 @@ proc renderQuote(quote: Tweet; prefs: Prefs; path: string): VNode =
       renderArticleCard(quote.articlePreview.get(), prefs)
 
     if quote.note.len > 0 and not prefs.hideCommunityNotes:
-      renderCommunityNote(quote.note, prefs)
+      renderCommunityNote(quote.note, prefs, quote, transUrl)
 
     if quote.hasThread:
       a(class="show-thread", href=getLink(quote)):
@@ -396,17 +505,19 @@ proc renderTweet*(tweet: Tweet; prefs: Prefs; path: string; class=""; index=0;
     pinned = tweet.pinned
 
   var retweet: string
+  var retweeter: string
   var tweet = fullTweet
   if tweet.retweet.isSome:
     tweet = tweet.retweet.get
     retweet = fullTweet.user.fullname
+    retweeter = fullTweet.user.username
 
   buildHtml(tdiv(class=("timeline-item " & divClass), data-username=tweet.user.username)):
     if not mainTweet:
       a(class="tweet-link", href=getLink(tweet))
 
     tdiv(class="tweet-body"):
-      renderHeader(tweet, retweet, pinned, prefs, path)
+      renderHeader(tweet, retweet, retweeter, fullTweet, pinned, prefs, path)
 
       if not afterTweet and index == 0 and tweet.reply.len > 0 and
          (tweet.reply.len > 1 or tweet.reply[0] != tweet.user.username or pinned):
@@ -416,8 +527,26 @@ proc renderTweet*(tweet: Tweet; prefs: Prefs; path: string; class=""; index=0;
       if prefs.bidiSupport:
         tweetClass &= " tweet-bidi"
 
+      let
+        transOn = enableTranslation() and tweet.translatable
+        quoteTrans = tweet.quote.isSome and
+                     (tweet.quote.get.translatable or tweet.quote.get.noteTranslatable)
+        transUrl = if enableTranslation() and
+                      (tweet.translatable or tweet.noteTranslatable or quoteTrans):
+                     translateUrl(tweet, path, mainTweet)
+                   else: ""
+        transActive = transOn and tweet.translation.len > 0 and
+                      (tweet.showTrans or prefs.autoTranslate)
+        tweetText = if transActive: tweet.translation else: tweet.text
+
+      if tweet.canTranslateOnDemand:
+        renderTranslateOnDemand(tweet)
+      elif transOn:
+        renderTranslateLabel(transActive, tweet.showTrans, tweet.transLang, transUrl,
+                             tweet.transTarget)
+
       tdiv(class=tweetClass, dir="auto"):
-        verbatim replaceUrls(tweet.text, prefs) & renderLocation(tweet)
+        verbatim replaceUrls(tweetText, prefs) & renderLocation(tweet)
 
       if tweet.attribution.isSome:
         renderAttribution(tweet.attribution.get(), prefs, tweet.attributionLink)
@@ -435,10 +564,10 @@ proc renderTweet*(tweet: Tweet; prefs: Prefs; path: string; class=""; index=0;
         renderPoll(tweet.poll.get())
 
       if tweet.quote.isSome:
-        renderQuote(tweet.quote.get(), prefs, path)
+        renderQuote(tweet.quote.get(), prefs, path, transUrl)
 
       if tweet.note.len > 0 and not prefs.hideCommunityNotes:
-        renderCommunityNote(tweet.note, prefs)
+        renderCommunityNote(tweet.note, prefs, tweet, transUrl)
 
       if tweet.isAI or tweet.isAd:
         renderDisclosures(tweet)
@@ -462,4 +591,7 @@ proc renderTweet*(tweet: Tweet; prefs: Prefs; path: string; class=""; index=0;
         renderMediaTags(tweet.mediaTags)
 
       if not prefs.hideTweetStats:
-        renderStats(tweet.stats)
+        var stats = tweet.stats
+        if retweet.len > 0 and stats.source.len == 0:
+          stats.source = fullTweet.stats.source
+        renderStats(stats, prefs, tweet)

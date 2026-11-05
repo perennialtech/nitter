@@ -12,6 +12,7 @@ proc main() {.async.} =
       return
     raise newException(IOError, "Expected a rejected CONNECT")
 
+  let usePost = paramCount() >= 5 and paramStr(5) == "post"
   for index in 0 .. 1:
     let headers = newHttpHeaders({"X-Nitter-Proxy-Test": $index})
     if paramStr(2).startsWith("https:"):
@@ -28,9 +29,14 @@ proc main() {.async.} =
         c.close()
     else:
       useHttpClient(headers):
-        let response = await c.get(paramStr(2))
-        let body = await response.body
-        if response.code != Http200 or body != "OK":
-          raise newException(IOError, "Unexpected proxy test response")
+        if usePost:
+          let (response, body) = await c.postBounded(paramStr(2), "", 2000)
+          if response.code != Http200 or body != "OK":
+            raise newException(IOError, "Unexpected proxy POST test response")
+        else:
+          let response = await c.get(paramStr(2))
+          let body = await response.body
+          if response.code != Http200 or body != "OK":
+            raise newException(IOError, "Unexpected proxy test response")
 
 waitFor main()

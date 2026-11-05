@@ -11,12 +11,13 @@ type
   BadClientError* = object of CatchableError
 
   TimelineKind* {.pure.} = enum
-    tweets, replies, media, articles
+    tweets, replies, media, articles, reposts
 
   ApiUrl* = object
     endpoint*: string
     params*: seq[(string, string)]
     skipTid*: bool
+    suffix*: string
 
   ApiReq* = object
     oauth*: ApiUrl
@@ -30,6 +31,7 @@ type
   SessionKind* = enum
     oauth
     cookie
+    guest
 
   Session* = ref object
     id*: int64
@@ -45,6 +47,12 @@ type
     of cookie:
       authToken*: string
       ct0*: string
+    of guest:
+      guestToken*: string
+      # epoch seconds when this guest token was activated
+      guestCreated*: int
+      # requests made with this token since activation
+      guestReqs*: int
 
   Error* = enum
     null = 0
@@ -94,6 +102,7 @@ type
     likes*: int
     media*: int
     verifiedType*: VerifiedType
+    parodyLabel*: string
     protected*: bool
     suspended*: bool
     joinDate*: DateTime
@@ -175,7 +184,7 @@ type
 
   QueryKind* = enum
     posts, replies, media, users, tweets, userList, followers, following, lists, top,
-    articles
+    articles, reposts
 
   RankingMode* = enum
     Relevance, Recency, Likes
@@ -309,14 +318,54 @@ type
   TweetStats* = object
     replies*: int
     retweets*: int
+    quotes*: int
     likes*: int
     views*: int
+    source*: string
 
   ArticlePreview* = object
     title*: string
     previewText*: string
     coverImage*: string
     tweetId*: int64
+
+  BirdwatchNote* = object
+    id*: string
+    text*: string
+    helpful*: bool
+    misleading*: bool
+    createdAt*: DateTime
+    authorAlias*: string
+    classification*: string
+    misleadingTags*: seq[string]
+    helpfulTags*: seq[string]
+    decidedBy*: string
+    translatable*: bool
+    isTranslatable*: bool
+    translation*: string
+    transLang*: string
+    transTarget*: string
+
+  BirdwatchNotes* = object
+    notes*: seq[BirdwatchNote]
+
+  BirdwatchHistoryNote* = object
+    id*: string
+    text*: string
+    helpful*: bool
+    classification*: string
+    createdAt*: DateTime
+    tweetId*: int64
+    tweetUsername*: string
+
+  BirdwatchSingleNote* = object
+    note*: BirdwatchNote
+    tweetId*: int64
+
+  BirdwatchHistory* = object
+    alias*: string
+    bottom*: string
+    notes*: seq[BirdwatchHistoryNote]
 
   Tweet* = ref object
     id*: int64
@@ -329,6 +378,7 @@ type
     pinned*: bool
     hasThread*: bool
     available*: bool
+    expUrl*: string
     tombstone*: string
     location*: string
     # Unused, needed for backwards compat
@@ -344,9 +394,22 @@ type
     media*: MediaEntities
     history*: seq[int64]
     note*: string
+    hasBirdwatch*: bool
     isAd*: bool
     isAI*: bool
     articlePreview*: Option[ArticlePreview]
+    translatable*: bool
+    isTranslatable*: bool
+    translation*: string
+    transLang*: string
+    transTarget*: string
+    showTrans*: bool
+    noteId*: string
+    noteTranslatable*: bool
+    noteIsTranslatable*: bool
+    noteTranslation*: string
+    noteTransLang*: string
+    noteTransTarget*: string
 
   Tweets* = seq[Tweet]
 
@@ -373,6 +436,7 @@ type
     history*: Tweets
 
   Timeline* = Result[Tweets]
+  UsersTimeline* = Result[User]
 
   Profile* = object
     user*: User
@@ -432,8 +496,10 @@ type
     enableRSSUserReplies*: bool
     enableRSSUserMedia*: bool
     enableRSSUserArticles*: bool
+    enableRSSUserReposts*: bool
     enableRSSSearch*: bool
     enableRSSList*: bool
+    enableRSSCommunityNotes*: bool
     enableDebug*: bool
     proxy*: string
     proxyAuth*: string
@@ -443,6 +509,20 @@ type
     maxRetries*: int
     retryDelayMs*: int
     apiTimeoutMs*: int
+    guestAuth*: bool
+    guestPoolSize*: int
+    enableTrends*: bool
+    trendsTab1Name*: string
+    trendsTab1Woeid*: int
+    trendsTab2Name*: string
+    trendsTab2Woeid*: int
+    trendsCacheMinutes*: int
+    trendsMaxItems*: int
+    showCommunityNotesNav*: bool
+    showRetweetTime*: bool
+    enableTranslation*: bool
+    onDemandTranslation*: bool
+    onDemandTranslationLang*: string
 
     rssCacheTime*: int
     listCacheTime*: int

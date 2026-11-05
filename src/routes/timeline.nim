@@ -3,7 +3,7 @@ import asyncdispatch, strutils, sequtils, uri, options, times
 import jester, karax/vdom
 
 import router_utils
-import ".."/[types, redis_cache, formatters, query, api]
+import ".."/[types, redis_cache, formatters, query, api, apiutils]
 import ../views/[general, profile, timeline, status, search, about_account]
 
 export vdom
@@ -18,6 +18,7 @@ proc tabRssEnabled*(cfg: Config; tab: string): bool =
   of "with_replies": cfg.enableRSSUserReplies
   of "media": cfg.enableRSSUserMedia
   of "articles": cfg.enableRSSUserArticles
+  of "reposts": cfg.enableRSSUserReposts
   of "search": cfg.enableRSSSearch
   else: false
 
@@ -28,6 +29,8 @@ proc getQuery*(request: Request; tab, name: string; prefs: Prefs): Query =
     result = getReplyQuery(name)
   of "articles":
     result = getArticlesQuery(name)
+  of "reposts":
+    result = getRepostsQuery(name)
   of "media":
     result = getMediaQuery(name)
     result.view =
@@ -46,7 +49,8 @@ template skipIf[T](cond: bool; default; body: Future[T]): Future[T] =
   else:
     body
 
-proc fetchProfile*(after: string; query: Query; skipRail=false): Future[Profile] {.async.} =
+proc fetchProfile*(after: string; query: Query; prefs: Prefs;
+                   skipRail=false; rss=false): Future[Profile] {.async.} =
   let
     name = query.fromUser[0]
     userId = await getUserId(name)
@@ -69,13 +73,33 @@ proc fetchProfile*(after: string; query: Query; skipRail=false): Future[Profile]
 
     user = getCachedUser(name)
     info = getCachedAccountInfo(name, fetch=false)
+    useGuestSearch = isGuestAuth() and not rss
 
   result =
     case query.kind
-    of posts: await getGraphUserTweets(userId, TimelineKind.tweets, after)
-    of replies: await getGraphUserTweets(userId, TimelineKind.replies, after)
+    of posts:
+      if useGuestSearch and prefs.guestSearchFallback:
+        Profile(tweets: await getGraphTweetSearch(query, after))
+      else:
+        await getGraphUserTweets(userId, TimelineKind.tweets, after, rss)
+    of replies:
+      if useGuestSearch:
+        Profile(tweets: await getGraphTweetSearch(query, after))
+      else:
+        await getGraphUserTweets(userId, TimelineKind.replies, after, rss)
     of media: await getGraphUserTweets(userId, TimelineKind.media, after)
-    of QueryKind.articles: await getGraphUserTweets(userId, TimelineKind.articles, after)
+    of QueryKind.articles:
+      if isGuestAuth():
+        let articleQuery = Query(
+          kind: posts,
+          fromUser: query.fromUser,
+          text: "url:x.com/i/article/"
+        )
+        Profile(tweets: await getGraphTweetSearch(articleQuery, after))
+      else:
+        await getGraphUserTweets(userId, TimelineKind.articles, after)
+    of QueryKind.reposts:
+      await getGraphUserTweets(userId, TimelineKind.reposts, after)
     else: Profile(tweets: await getGraphTweetSearch(query, after))
 
   result.user = await user
@@ -92,7 +116,7 @@ proc showTimeline*(request: Request; query: Query; cfg: Config; prefs: Prefs;
       html = renderTweetSearch(timeline, prefs, getPath())
     return renderMain(html, request, cfg, prefs, "Multi", rss=rss)
 
-  var profile = await fetchProfile(after, query)
+  var profile = await fetchProfile(after, query, prefs)
   template u: untyped = profile.user
 
   if u.suspended:
@@ -184,9 +208,9 @@ proc createTimelineRouter*(cfg: Config) =
       cond '.' notin @"name"
       cond @"name" notin ["pic", "gif", "video", "search", "settings", "login", "intent", "i"]
       cond @"name".allCharsInSet({'a'..'z', 'A'..'Z', '0'..'9', '_', ','})
-      cond @"tab" in ["with_replies", "media", "search", "articles", ""]
-      # articles can't be approximated by search, so multi-user is unsupported
-      cond not (@"tab" == "articles" and ',' in @"name")
+      cond @"tab" in ["with_replies", "media", "search", "articles", "reposts", ""]
+      # articles/reposts can't be approximated by search, so multi-user is unsupported
+      cond not (@"tab" in ["articles", "reposts"] and ',' in @"name")
       let
         prefs = requestPrefs()
         after = getCursor()
@@ -205,7 +229,7 @@ proc createTimelineRouter*(cfg: Config) =
           timeline.beginning = true
           resp $renderTweetSearch(timeline, prefs, getPath())
         else:
-          var profile = await fetchProfile(after, query, skipRail=true)
+          var profile = await fetchProfile(after, query, prefs, skipRail=true)
           if profile.tweets.content.len == 0: resp Http404
           profile.tweets.beginning = true
           resp $renderTimelineTweets(profile.tweets, prefs, getPath())

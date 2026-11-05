@@ -54,7 +54,7 @@ class HttpProxyTests(unittest.TestCase):
                 headers[key.lower()] = value.strip()
         return lines[0], headers
 
-    def proxy_requests(self, tls, url_auth="", auth=""):
+    def proxy_requests(self, tls, url_auth="", auth="", method="GET"):
         observed, errors = [], []
         listener = socket.socket()
         self.addCleanup(listener.close)
@@ -91,7 +91,8 @@ class HttpProxyTests(unittest.TestCase):
         try:
             result = subprocess.run(
                 [str(self.client), f"http://{authority}127.0.0.1:{port}",
-                 f"{scheme}://origin.test{self.path}", str(self.certificate), auth],
+                 f"{scheme}://origin.test{self.path}", str(self.certificate), auth,
+                 "post" if method == "POST" else ""],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, timeout=30,
             )
@@ -102,15 +103,21 @@ class HttpProxyTests(unittest.TestCase):
         self.assertFalse(errors, repr(errors))
         return observed
 
-    def check_requests(self, requests, target):
+    def check_requests(self, requests, target, method="GET"):
         self.assertEqual(len(requests), 2)
         for index, (line, headers) in enumerate(requests):
-            self.assertEqual(line, f"GET {target} HTTP/1.1")
+            self.assertEqual(line, f"{method} {target} HTTP/1.1")
             self.assertEqual(headers["host"], "origin.test")
             self.assertEqual(headers["x-nitter-proxy-test"], str(index))
 
     def test_http_proxy_uses_absolute_form(self):
         self.check_requests(self.proxy_requests(tls=False), "http://origin.test" + self.path)
+
+    def test_post_uses_proxy_with_bounded_transport(self):
+        self.check_requests(
+            self.proxy_requests(tls=False, method="POST"),
+            "http://origin.test" + self.path, method="POST",
+        )
 
     def test_https_connect_uses_origin_form(self):
         requests = self.proxy_requests(tls=True)

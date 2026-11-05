@@ -4,7 +4,6 @@ import karax/[karaxdsl, vdom]
 
 import renderutils
 import ../utils, ../types, ../prefs, ../formatters
-
 import jester
 
 const
@@ -29,6 +28,8 @@ proc renderNavbar(cfg: Config; req: Request; rss, canonical: string): VNode =
 
       tdiv(class="nav-item right"):
         icon "search", title="Search", href="/search"
+        if cfg.showCommunityNotesNav and not cfg.guestAuth:
+          icon "group", title="Community Notes", href="/i/communitynotes"
         if rss.len > 0:
           icon "rss", title="RSS Feed", href=rss
         icon "bird", title="Open in X", href=canonical

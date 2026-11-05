@@ -13,16 +13,26 @@ const
   graphUserTweetsV2* = "LE3eTyeqhBh2g-fX85O2eQ/UserWithProfileTweetsQueryV2"
   graphUserTweetsAndRepliesV2* = "AcYHjc_YAx-9_rKWdMsKvA/UserWithProfileTweetsAndRepliesQueryV2"
   graphUserTweets* = "SXVCYB8XHSS25nzIljNtZA/UserTweets"
+  graphUserTweetsOriginals* = "Yr8749ieoUptxRqQv766Fw/UserOriginalsTimeline"
   graphUserTweetsAndReplies* = "qUpkZU6eN8MbtQb7rC_pYg/UserTweetsAndReplies"
+  graphUserReplies* = "xz348nziCm96wndJ1S0MUQ/UserRepliesTimeline"
   graphUserMedia* = "VyudDWQnr9vJNw7GasFz2g/UserMedia"
   graphUserMediaV2* = "WK111rbR0vM0ZX4lyZCYjw/MediaTimelineV2"
   graphUserArticles* = "ZmMjUyrTpwYfTGAdylEyMw/UserArticlesTweets"
   graphUserArticlesV2* = "PsGixN38UZz2RheyayNB5Q/UserProfileArticlesTimelineQuery"
+  graphUserReposts* = "CnNg1YiKG7bRgi-RoIfKsw/UserRepostsTimeline"
   graphTweet* = "OZMbEnEa96AN8Pq6HyTWdw/ConversationTimeline"
   graphTweetDetail* = "XMOz5h24KAZ86qKffKTLdQ/TweetDetail"
   graphTweetResult* = "xYOrBQoTlfKJJPsX76MZEw/TweetResultByIdQuery"
   graphTweetEditHistory* = "1izbuOcH_QpuMcyCxOXkAg/TweetEditHistory"
   graphSearchTimeline* = "hyPfJYJ_XAtDYoslQc-Rgg/SearchTimeline"
+  graphRetweeters* = "53eDOg7W9h2J866mtRyaXA/Retweeters"
+  graphBirdwatchNotes* = "gIsAL0K8Ceo7h4lY149Eog/BirdwatchFetchNotes"
+  graphBirdwatchContributorNotes* = "DM12wC9t64PNE_tB9syjRw/BirdwatchFetchContributorNotesSlice"
+  graphBirdwatchOneNote* = "1lt6XSRik4s93WG0BrEvig/BirdwatchFetchOneNote"
+  graphBirdwatchGlobalTimeline* = "8h4-Db-fcu8bNAA7mpNAVw/BirdwatchFetchGlobalTimeline"
+  graphGenericTimelineById* = "yXgbfagsvlYI3tUiju1_tA/GenericTimelineById"
+  communityNotesNewTimelineId* = "VGltZWxpbmU6CwA6AAAAEjcxMzgxNDUxOTEwNTk5ODg0OAA="
 
   graphListById* = "niz0TtOxL2zIcbq6_NQiNw/ListByRestId"
   graphListBySlug* = "RqkWNDQpOntlxNtJa4RIoQ/ListBySlug"
@@ -43,6 +53,7 @@ const
   graphBroadcast* = "RG6wSogandh6WPIzxW9aag/BroadcastQuery"
   graphAudioSpace* = "Bh0L6azTQoMs9rJKeCF4wQ/AudioSpaceById"
   restLiveStream* = "1.1/live_video_stream/status/"
+  restTrends* = "1.1/trends/place.json"
 
   graphFollowers* = "JNyQdTISpzCkj_1fqxDvFg/Followers"
   graphFollowing* = "qGZZDF3mp91q7X22s3HxpA/Following"
@@ -88,6 +99,7 @@ const
   "responsive_web_grok_image_annotation_enabled": true,
   "responsive_web_grok_imagine_annotation_enabled": true,
   "responsive_web_grok_community_note_auto_translation_is_enabled": true,
+  "responsive_web_grok_community_note_translation_is_enabled": true,
   "responsive_web_enhance_cards_enabled": false
 }""".replace(" ", "").replace("\n", "")
 
@@ -107,7 +119,7 @@ const
   $2
   "referrer": "profile",
   "with_rux_injections": false,
-  "rankingMode": "Relevance",
+  "rankingMode": "$3",
   "includePromotedContent": true,
   "withCommunity": true,
   "withQuickPromoteEligibilityTweetFields": true,
@@ -139,6 +151,7 @@ const
   "count": 20,
   "includePromotedContent": false,
   "withQuickPromoteEligibilityTweetFields": true,
+  "withBirdwatchNotes": true,
   "withVoice": true
 }""".replace(" ", "").replace("\n", "")
 
@@ -147,6 +160,16 @@ const
   "count": 20,
   "includePromotedContent": false,
   "withCommunity": true,
+  "withBirdwatchNotes": true,
+  "withVoice": true
+}""".replace(" ", "").replace("\n", "")
+
+  userRepliesVars* = """{
+  "userId": "$1", $2
+  "count": 20,
+  "includePromotedContent": false,
+  "withCommunity": true,
+  "withBirdwatchNotes": true,
   "withVoice": true
 }""".replace(" ", "").replace("\n", "")
 
@@ -155,6 +178,38 @@ const
   "count": 20,
   "includePromotedContent": false,
   "withVoice": true
+}""".replace(" ", "").replace("\n", "")
+
+  userRepostsVars* = """{
+  "userId": "$1", $2
+  "count": 20,
+  "includePromotedContent": false,
+  "withVoice": true
+}""".replace(" ", "").replace("\n", "")
+
+  reactorsVars* = """{
+  "tweetId": "$1", $2
+  "count": 20,
+  "enableRanking": true,
+  "includePromotedContent": true
+}""".replace(" ", "").replace("\n", "")
+
+  birdwatchNotesVars* = """{
+  "tweet_id": "$1"
+}""".replace(" ", "").replace("\n", "")
+
+  birdwatchOneNoteVars* = """{
+  "note_id": "$1"
+}""".replace(" ", "").replace("\n", "")
+
+  birdwatchGlobalTimelineVars* = """{
+  "count": 200
+}""".replace(" ", "").replace("\n", "")
+
+  genericTimelineVars* = """{
+  "timelineId": "$1",
+  "count": 200,
+  "withQuickPromoteEligibilityTweetFields": true
 }""".replace(" ", "").replace("\n", "")
 
   articleVars* = """{
@@ -182,6 +237,16 @@ const
   "withVoice": false,
   "withCommunity": false
 }""".replace(" ", "").replace("\n", "")
+
+  tweetTransVars* = """{
+  "tweetId": "$1",
+  "includePromotedContent": true,
+  "withBirdwatchNotes": true,
+  "withVoice": true,
+  "withCommunity": true
+}""".replace(" ", "").replace("\n", "")
+
+  tweetTransFieldToggles* = """{"withArticleRichContentState":true,"withArticlePlainText":false,"withArticleSummaryText":true,"withArticleVoiceOver":true,"withPayments":false}"""
 
   userByRestIdVars* = """{
   "userId": "$1",
@@ -216,4 +281,5 @@ const
 
   userFieldToggles = """{"withPayments":false,"withAuxiliaryUserLabels":true}"""
   userTweetsFieldToggles* = """{"withArticleRichContentState":true,"withArticlePlainText":false}"""
+  userRepliesFieldToggles* = """{"withPayments":false,"withArticlePlainText":false}"""
   tweetDetailFieldToggles* = """{"withArticleRichContentState":true,"withArticlePlainText":false,"withGrokAnalyze":false,"withDisallowedReplyControls":false}"""

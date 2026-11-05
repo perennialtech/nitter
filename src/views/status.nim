@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import sequtils
+import sequtils, uri
 import karax/[karaxdsl, vdom]
 
-import ".."/[types, formatters]
+import ".."/[types, formatters, apiutils]
 import tweet, timeline
 
 proc renderEarlier(thread: Chain): VNode =
@@ -59,6 +59,12 @@ proc renderReplies*(replies: Result[Chain]; prefs: Prefs; path: string;
         let extra = if sort == Relevance: "" else: "sort=" & $sort & "&"
         renderMore(Query(), replies.bottom, focus="#r", extra=extra)
 
+proc renderSearchReplies(tweet: Tweet): VNode =
+  let link = "/search?q=" & encodeUrl("conversation_id:" & $tweet.id)
+  buildHtml(tdiv(class="timeline-item more-replies")):
+    a(class="more-replies-text", href=link):
+      text "Show more replies"
+
 proc renderRelated(replies: Result[Chain]; prefs: Prefs; path: string): VNode =
   buildHtml(tdiv(class="related-tweets")):
     tdiv(class="related-header"):
@@ -103,6 +109,8 @@ proc renderConversation*(conv: Conversation; prefs: Prefs; path: string;
       if conv.replies.content.len > 0 or conv.replies.bottom.len > 0:
         renderReplySort(sort)
         renderReplies(conv.replies, prefs, path, conv.tweet, sort)
+      if isGuestAuth() and conv.before.content.len == 0:
+        renderSearchReplies(conv.tweet)
 
     if not prefs.hideRelated:
       if conv.replies.content.anyIt(it.related and it.content.len > 0):
@@ -113,7 +121,7 @@ proc renderConversation*(conv: Conversation; prefs: Prefs; path: string;
 proc renderEditHistory*(edits: EditHistory; prefs: Prefs; path: string): VNode =
   buildHtml(tdiv(class="edit-history")):
     tdiv(class="latest-edit"):
-      tdiv(class="edit-history-header"): 
+      tdiv(class="edit-history-header"):
         text "Latest post"
       renderTweet(edits.latest, prefs, path)
 

@@ -47,6 +47,7 @@ type
     legacy*: User
     restId*: string
     isBlueVerified*: bool
+    parodyCommentaryFanLabel*: string
     core*: UserCore
     avatar*: UserAvatar
     banner*: UserAvatar

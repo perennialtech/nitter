@@ -161,11 +161,12 @@ class Masonry {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  const isTweet = location.pathname.includes("/status/");
+  const repliesContainer = document.querySelector(".replies");
+  const isTweet = !!repliesContainer;
   const containerClass = isTweet ? ".replies" : ".timeline";
   const itemClass = containerClass + " > div:not(.top-ref)";
   const html = document.documentElement;
-  const container = document.querySelector(containerClass);
+  const container = repliesContainer || document.querySelector(containerClass);
   const masonryEl = container?.querySelector(".gallery-masonry");
   const masonry = masonryEl ? new Masonry(masonryEl) : null;
   let loading = false;

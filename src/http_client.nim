@@ -45,6 +45,21 @@ proc getBounded*(client: AsyncHttpClient; url: string;
 
   result = (response, body.read())
 
+proc postBounded*(client: AsyncHttpClient; url, payload: string;
+                  timeoutMs: int): Future[(AsyncResponse, string)] {.async.} =
+  let headers = client.post(url, payload)
+  if not await withTimeout(headers, timeoutMs):
+    closeClient(client)
+    raise newException(IOError, "Upstream API response headers timed out")
+
+  let response = headers.read()
+  let body = response.body
+  if not await withTimeout(body, timeoutMs):
+    closeClient(client)
+    raise newException(IOError, "Upstream API response body timed out")
+
+  result = (response, body.read())
+
 template useHttpClient*(heads: HttpHeaders; body: untyped): untyped =
   bind BadClientError, ProtocolError, closeClient
   var c {.inject.} = newAsyncHttpClient(userAgent="", headers=heads, proxy=proxy)

@@ -15,6 +15,8 @@ proc getPrefs*(cookies, params: Table[string, string]): Prefs =
   result = defaultPrefs
   genParsePrefs(cookies)
   genParsePrefs(params)
+  if params.getOrDefault("tr") == "0":
+    result.autoTranslate = false
 
 proc encodePrefs*(prefs: Prefs): string =
   var encPairs: seq[string]

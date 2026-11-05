@@ -39,6 +39,7 @@ proc parseGraphArticle*(json: string): Article =
   result.stats = TweetStats(
     replies: tweet.legacy.replyCount,
     retweets: tweet.legacy.retweetCount,
+    quotes: tweet.legacy.quoteCount,
     likes: tweet.legacy.favoriteCount,
   )
   if tweet.views.count.len > 0:

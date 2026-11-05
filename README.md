@@ -132,9 +132,10 @@ Images are published to `ghcr.io/perennialtech/nitter` after successful CI on
 `master`. The `latest` and `master` tags, and full commit-SHA tags, support both
 `linux/amd64` and `linux/arm64`. Pull request builds do not publish images.
 
-Browsing Twitter requires real account sessions in `sessions.jsonl`. Follow the
-upstream [session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens)
-to create this file before starting the container.
+For account-based browsing, follow the upstream
+[session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens)
+to create `sessions.jsonl` before starting the container. For guest mode, see
+`guestAuth` in [nitter.example.conf](nitter.example.conf).
 
 To run Nitter with Docker, you'll need to install and run Redis separately
 before you can run the container. See below for how to also run Redis using

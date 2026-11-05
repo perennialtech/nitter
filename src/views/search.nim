@@ -3,7 +3,7 @@ import strutils, strformat, sequtils, unicode, tables
 import karax/[karaxdsl, vdom]
 
 import renderutils, timeline
-import ".."/[types, query]
+import ".."/[types, query, apiutils]
 
 const toggles = {
   "nativeretweets": "Retweets",
@@ -32,8 +32,12 @@ proc renderProfileTabs*(query: Query; username: string): VNode =
   buildHtml(ul(class="tab")):
     li(class=query.getTabClass(posts)):
       a(href=link): text "Tweets"
-    li(class=(query.getTabClass(replies) & " wide")):
-      a(href=(link & "/with_replies")): text "Tweets & Replies"
+    li(class=(if isGuestAuth(): query.getTabClass(replies) & " wide" else: query.getTabClass(replies))):
+      a(href=(link & "/with_replies")):
+        text (if isGuestAuth(): "Tweets & Replies" else: "Replies")
+    if not isGuestAuth():
+      li(class=query.getTabClass(QueryKind.reposts)):
+        a(href=(link & "/reposts")): text "Retweets"
     li(class=query.getTabClass(media)):
       a(href=(link & "/media")): text "Media"
     if query.fromUser.len == 1:
@@ -64,9 +68,10 @@ proc renderSearchTabs*(query: Query): VNode =
   # the media view mode only applies to the Media tab
   q.view = ""
   buildHtml(ul(class="tab")):
-    li(class=query.getTabClass(top)):
-      q.kind = top
-      a(href=("?" & genQueryUrl(q))): text "Top"
+    if not isGuestAuth():
+      li(class=query.getTabClass(top)):
+        q.kind = top
+        a(href=("?" & genQueryUrl(q))): text "Top"
     li(class=query.getTabClass(tweets)):
       q.kind = tweets
       a(href=("?" & genQueryUrl(q))): text "Latest"
@@ -171,3 +176,29 @@ proc renderListSearch*(results: Result[ListSearchResult]; prefs: Prefs;
 
     renderSearchTabs(results.query)
     renderTimelineLists(results, prefs, path)
+
+proc renderReactorsTabs(name, id, activeTab: string): VNode =
+  let base = "/" & name & "/status/" & id
+  func cls(tab: string): string =
+    if activeTab == tab: "tab-item active" else: "tab-item"
+  buildHtml(ul(class="tab")):
+    li(class=cls("quotes")):
+      a(href=(base & "/quotes")): text "Quoted Tweets"
+    li(class=cls("retweets")):
+      a(href=(base & "/retweets")): text "Retweets"
+
+proc renderRetweeters*(results: UsersTimeline; prefs: Prefs; name, id: string): VNode =
+  buildHtml(tdiv(class="timeline-container")):
+    renderReactorsTabs(name, id, "retweets")
+    renderTimelineUsers(results, prefs)
+
+proc renderRetweetersUnavailable*(name, id: string): VNode =
+  buildHtml(tdiv(class="timeline-container")):
+    renderReactorsTabs(name, id, "retweets")
+    tdiv(class="timeline-none"):
+      text "Retweets aren't available in guest mode."
+
+proc renderQuotes*(results: Timeline; prefs: Prefs; path, name, id: string): VNode =
+  buildHtml(tdiv(class="timeline-container")):
+    renderReactorsTabs(name, id, "quotes")
+    renderTimelineTweets(results, prefs, path)

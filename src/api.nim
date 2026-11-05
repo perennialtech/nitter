@@ -1,21 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import asyncdispatch, httpclient, strutils, sequtils, sugar
+import options, asyncdispatch, httpclient, strutils, sequtils, sugar, tables, times
 import packedjson
-import types, query, formatters, consts, apiutils, parser, utils
+import types, query, formatters, consts, apiutils, parser, parserutils, utils
 import experimental/parser
 
 # Helper to generate params object for GraphQL requests
-proc genParams(variables: string; fieldToggles = ""): seq[(string, string)] =
+proc genParams(variables: string; fieldToggles = ""; features = gqlFeatures): seq[(string, string)] =
   result.add ("variables", variables)
-  result.add ("features", gqlFeatures)
+  result.add ("features", features)
   if fieldToggles.len > 0:
     result.add ("fieldToggles", fieldToggles)
 
-proc apiUrl(endpoint, variables: string; fieldToggles = ""; skipTid = false): ApiUrl =
-  return ApiUrl(endpoint: endpoint, params: genParams(variables, fieldToggles), skipTid: skipTid)
+proc apiUrl(endpoint, variables: string; fieldToggles = ""; skipTid = false;
+            features = gqlFeatures): ApiUrl =
+  return ApiUrl(endpoint: endpoint, params: genParams(variables, fieldToggles, features), skipTid: skipTid)
 
-proc apiReq(endpoint, variables: string; fieldToggles = ""; skipTid = false): ApiReq =
-  let url = apiUrl(endpoint, variables, fieldToggles, skipTid)
+proc apiReq(endpoint, variables: string; fieldToggles = ""; skipTid = false;
+            features = gqlFeatures): ApiReq =
+  let url = apiUrl(endpoint, variables, fieldToggles, skipTid, features)
   return ApiReq(cookie: url, oauth: url)
 
 proc cursorParam(after: string): string =
@@ -24,33 +26,30 @@ proc cursorParam(after: string): string =
   if after.len > 0: "\"cursor\":" & $(%after) & "," else: ""
 
 proc mediaUrl(id, cursor: string): ApiReq =
-  result = ApiReq(
-    cookie: apiUrl(graphUserMedia, userMediaVars % [id, cursor, "100"]),
-    oauth: apiUrl(graphUserMediaV2, restIdVars % [id, cursor, "100"])
-  )
+  return apiReq(graphUserMedia, userMediaVars % [id, cursor, "100"])
 
-proc userTweetsUrl(id: string; cursor: string): ApiReq =
-  return apiReq(graphUserTweetsV2, restIdVars % [id, cursor, "20"], userTweetsFieldToggles)
+proc userTweetsUrl*(id: string; cursor: string; rss = false): ApiReq =
+  # Existing /@user/rss subscribers expect the full tweet timeline, including
+  # reposts; the newer UI's originals-only endpoint must not change the feed.
+  let endpoint = if rss or isGuestAuth(): graphUserTweets else: graphUserTweetsOriginals
+  return apiReq(endpoint, userTweetsVars % [id, cursor, "20"], userTweetsFieldToggles)
 
 proc userTweetsAndRepliesUrl(id: string; cursor: string): ApiReq =
-  result = ApiReq(
-    cookie: apiUrl(graphUserTweetsAndReplies, userTweetsAndRepliesVars % [id, cursor], userTweetsFieldToggles),
-    oauth: apiUrl(graphUserTweetsAndRepliesV2, restIdVars % [id, cursor, "20"], userTweetsFieldToggles, skipTid=true)
-  )
+  return apiReq(graphUserTweetsAndReplies, userTweetsAndRepliesVars % [id, cursor], userTweetsFieldToggles)
+
+proc userRepliesUrl*(id: string; cursor: string; rss = false): ApiReq =
+  if rss:
+    return userTweetsAndRepliesUrl(id, cursor)
+  return apiReq(graphUserReplies, userRepliesVars % [id, cursor], userRepliesFieldToggles)
 
 proc userArticlesUrl(id: string; cursor: string): ApiReq =
-  result = ApiReq(
-    cookie: apiUrl(graphUserArticles, userArticlesVars % [id, cursor], userTweetsFieldToggles),
-    oauth: apiUrl(graphUserArticlesV2, restIdVars % [id, cursor, "20"], userTweetsFieldToggles)
-  )
+  return apiReq(graphUserArticles, userArticlesVars % [id, cursor], userTweetsFieldToggles)
+
+proc userRepostsUrl(id: string; cursor: string): ApiReq =
+  return apiReq(graphUserReposts, userRepostsVars % [id, cursor], userTweetsFieldToggles)
 
 proc tweetDetailUrl(id, cursor: string; mode = Relevance): ApiReq =
-  return apiReq(graphTweet, tweetVars % [id, cursor, $mode])
-  # let cookieVars = tweetDetailVars % [id, cursor]
-  # result = ApiReq(
-  #   cookie: apiUrl(graphTweetDetail, cookieVars, tweetDetailFieldToggles),
-  #   oauth: apiUrl(graphTweet, tweetVars % [id, cursor])
-  # )
+  return apiReq(graphTweetDetail, tweetDetailVars % [id, cursor, $mode], tweetDetailFieldToggles)
 
 proc userUrl(username: string): ApiReq =
   let cookieVars = $(%*{"screen_name": username, "withGrokTranslatedBio": false})
@@ -110,15 +109,17 @@ proc getAudioSpace*(id: string): Future[AudioSpace] {.async.} =
     js = await fetch(req)
   result = parseAudioSpace(js)
 
-proc getGraphUserTweets*(id: string; kind: TimelineKind; after=""): Future[Profile] {.async.} =
+proc getGraphUserTweets*(id: string; kind: TimelineKind; after="";
+                         rss = false): Future[Profile] {.async.} =
   if id.len == 0: return
   let
     cursor = cursorParam(after)
     url = case kind
-      of TimelineKind.tweets: userTweetsUrl(id, cursor)
-      of TimelineKind.replies: userTweetsAndRepliesUrl(id, cursor)
+      of TimelineKind.tweets: userTweetsUrl(id, cursor, rss)
+      of TimelineKind.replies: userRepliesUrl(id, cursor, rss)
       of TimelineKind.media: mediaUrl(id, cursor)
       of TimelineKind.articles: userArticlesUrl(id, cursor)
+      of TimelineKind.reposts: userRepostsUrl(id, cursor)
     js = await fetch(url)
   result = parseGraphTimeline(js, after)
 
@@ -247,6 +248,193 @@ proc getTweetByRestId*(id: string): Future[Tweet] {.async.} =
     js = await fetch(url)
   result = parseTweetByRestId(js)
 
+proc getTweetTranslation*(id: string): Future[Tweet] {.async.} =
+  if id.len == 0: return
+  let
+    url = apiReq(graphTweetResultByRestId, tweetTransVars % id,
+                 tweetTransFieldToggles)
+    js = await fetch(url)
+  result = parseTweetByRestId(js)
+
+type
+  GrokLink = tuple[url, expanded: string]
+
+  OnDemandTrans = object
+    text, lang: string
+    at: int
+
+const
+  onDemandCacheTtl = 3600
+  onDemandCacheMax = 500
+
+var onDemandCache: Table[string, OnDemandTrans]
+var onDemandPending: Table[string, Future[bool]]
+
+proc parseGrokTranslation(body: string): tuple[text, lang: string; links: seq[GrokLink]] =
+  for line in body.splitLines:
+    var l = line.strip
+    if l.startsWith("data:"):
+      l = l[5 .. ^1].strip
+    if l.len == 0 or l[0] != '{': continue
+    try:
+      let res = parseJson(l){"result"}
+      result.text.add res{"text"}.getStr
+      if result.lang.len == 0:
+        result.lang = res{"source_language"}.getStr
+      let entities = res{"rich_text_entities"}
+      if entities.kind == JArray:
+        for e in entities:
+          let r = e{"ref"}
+          result.links.add (
+            url: r{"url"}.getStr,
+            expanded: r{"expandedUrl"}.getStr(r{"expanded_url"}.getStr)
+          )
+    except CatchableError:
+      discard
+
+proc cacheOnDemand(key, text, lang: string) =
+  let now = epochTime().int
+  if onDemandCache.len >= onDemandCacheMax:
+    var expired: seq[string]
+    for k, v in onDemandCache:
+      if now - v.at > onDemandCacheTtl: expired.add k
+    for k in expired: onDemandCache.del k
+    if onDemandCache.len >= onDemandCacheMax:
+      onDemandCache.clear()
+  onDemandCache[key] = OnDemandTrans(text: text, lang: lang, at: now)
+
+proc cachedOnDemand(key: string; found: var OnDemandTrans): bool =
+  if key notin onDemandCache: return
+  found = onDemandCache[key]
+  let ttl = if found.text.len > 0: onDemandCacheTtl else: translationRetrySeconds
+  if epochTime().int - found.at > ttl:
+    onDemandCache.del key
+    return
+  result = true
+
+proc applyOnDemandCache*(note: var BirdwatchNote) =
+  if not onDemandTranslation() or not note.isTranslatable or note.id.len == 0: return
+  var cached: OnDemandTrans
+  if not cachedOnDemand("n" & note.id, cached): return
+  note.translation = cached.text
+  note.transLang = cached.lang
+  note.transTarget = onDemandTranslationLang()
+  note.translatable = true
+
+proc applyOnDemandCache*(tweet: Tweet) =
+  if not onDemandTranslation() or tweet == nil: return
+
+  var cached: OnDemandTrans
+  if tweet.isTranslatable and tweet.translation.len == 0 and cachedOnDemand($tweet.id, cached):
+    tweet.translation = cached.text
+    tweet.transLang = cached.lang
+    tweet.transTarget = onDemandTranslationLang()
+    tweet.translatable = true
+
+  if tweet.noteIsTranslatable and tweet.noteId.len > 0 and tweet.noteTranslation.len == 0 and
+     cachedOnDemand("n" & tweet.noteId, cached):
+    tweet.noteTranslation = cached.text
+    tweet.noteTransLang = cached.lang
+    tweet.noteTransTarget = onDemandTranslationLang()
+    tweet.noteTranslatable = true
+
+  if tweet.quote.isSome:
+    let quote = tweet.quote.get
+    if quote.noteIsTranslatable and quote.noteId.len > 0 and quote.noteTranslation.len == 0 and
+       cachedOnDemand("n" & quote.noteId, cached):
+      quote.noteTranslation = cached.text
+      quote.noteTransLang = cached.lang
+      quote.noteTransTarget = onDemandTranslationLang()
+      quote.noteTranslatable = true
+
+proc translateTweet*(tweet: Tweet) {.async.} =
+  if not enableTranslation() or tweet == nil: return
+
+  var quoted: Tweet
+  if tweet.quote.isSome:
+    let quote = tweet.quote.get
+    if quote.translatable or quote.noteTranslatable or
+       (onDemandTranslation() and quote.noteIsTranslatable):
+      quoted = quote
+
+  let
+    onDemand = onDemandTranslation() and tweet.isTranslatable
+    onDemandNote = onDemandTranslation() and tweet.noteIsTranslatable
+
+  if not (tweet.translatable or tweet.noteTranslatable or onDemand or onDemandNote or
+          quoted != nil): return
+  tweet.showTrans = true
+  if quoted != nil: quoted.showTrans = true
+
+  applyOnDemandCache(tweet)
+
+  proc missing(t: Tweet; onDemand = false): bool =
+    t != nil and (((t.translatable or onDemand) and t.translation.len == 0) or
+                  (t.noteTranslatable and t.noteTranslation.len == 0))
+
+  if not (tweet.missing(onDemand) or quoted.missing): return
+
+  try:
+    let trans = await getTweetTranslation($tweet.id)
+    if trans == nil: return
+    if trans.translation.len > 0:
+      tweet.translation = trans.translation
+      tweet.transLang = trans.transLang
+      tweet.translatable = true
+    if trans.noteTranslation.len > 0:
+      tweet.noteTranslation = trans.noteTranslation
+      tweet.noteTransLang = trans.noteTransLang
+    if quoted != nil and trans.quote.isSome:
+      let tq = trans.quote.get
+      if quoted.translation.len == 0 and tq.translation.len > 0:
+        quoted.translation = tq.translation
+        quoted.transLang = tq.transLang
+      if quoted.noteTranslation.len == 0 and tq.noteTranslation.len > 0:
+        quoted.noteTranslation = tq.noteTranslation
+        quoted.noteTransLang = tq.noteTransLang
+  except CatchableError:
+    echo "Translation fetch failed for ", tweet.id, ": ", getCurrentExceptionMsg()
+
+type TranslationPoster* = proc(id, language, contentType: string): Future[string] {.closure.}
+
+proc translateUncached(id, key: string; note: bool;
+                       post: TranslationPoster): Future[bool] {.async.} =
+  try:
+    let
+      body = await post(id, onDemandTranslationLang(),
+                        if note: "COMMUNITY_NOTE" else: "POST")
+      parsed = body.parseGrokTranslation
+    result = parsed.text.len > 0
+    if result:
+      cacheOnDemand(key, expandGrokTranslation(parsed.text, parsed.links), parsed.lang)
+    elif body.len > 0:
+      echo "[translation] no translated text in grok response for ", id, ": ",
+           body[0 ..< min(body.len, 300)]
+  except CatchableError:
+    echo "[translation] on-demand translation failed for ", id, ": ", getCurrentExceptionMsg()
+  if not result:
+    # Cache failures briefly too, to avoid repeated public requests to an
+    # unavailable or rate-limited upstream endpoint.
+    cacheOnDemand(key, "", "")
+
+proc translateOnDemand*(id: string; note = false;
+                        post: TranslationPoster = postGrokTranslation): Future[bool] {.async.} =
+  if not onDemandTranslation() or id.len == 0: return
+  let key = (if note: "n" & id else: id)
+  var cached: OnDemandTrans
+  if cachedOnDemand(key, cached):
+    return cached.text.len > 0
+  if key in onDemandPending:
+    return await onDemandPending[key]
+
+  # Coalesce simultaneous requests for the same post or community note.
+  let pending = translateUncached(id, key, note, post)
+  onDemandPending[key] = pending
+  try:
+    return await pending
+  finally:
+    onDemandPending.del(key)
+
 proc getGraphTweet(id: string; after=""; mode = Relevance): Future[Conversation] {.async.} =
   if id.len == 0: return
   let
@@ -269,6 +457,50 @@ proc getGraphEditHistory*(id: string): Future[EditHistory] {.async.} =
     url = apiReq(graphTweetEditHistory, tweetEditHistoryVars % id)
     js = await fetch(url)
   result = parseGraphEditHistory(js, id)
+
+proc getGraphRetweeters*(id: string; after=""): Future[UsersTimeline] {.async.} =
+  if id.len == 0: return
+  let
+    cursor = cursorParam(after)
+    variables = reactorsVars % [id, cursor]
+    url = apiReq(graphRetweeters, variables)
+    js = await fetch(url)
+  result = parseGraphRetweetersTimeline(js, after)
+
+proc getGraphBirdwatchNotes*(id: string): Future[BirdwatchNotes] {.async.} =
+  if id.len == 0: return
+  let
+    url = apiReq(graphBirdwatchNotes, birdwatchNotesVars % id, features=gqlFeatures)
+    js = await fetch(url)
+  result = parseBirdwatchNotes(js)
+
+proc getGraphBirdwatchHistory*(alias: string; after=""): Future[BirdwatchHistory] {.async.} =
+  if alias.len == 0: return
+  var variables = %*{"count": 10, "alias": alias}
+  if after.len > 0:
+    variables["cursor"] = %after
+  let js = await fetch(apiReq(graphBirdwatchContributorNotes, $variables))
+  result = parseBirdwatchHistory(js)
+
+proc getGraphBirdwatchOneNote*(noteId: string): Future[BirdwatchSingleNote] {.async.} =
+  if noteId.len == 0: return
+  let
+    url = apiReq(graphBirdwatchOneNote, birdwatchOneNoteVars % noteId, features=gqlFeatures)
+    js = await fetch(url)
+  result = parseBirdwatchOneNote(js)
+
+proc getGraphBirdwatchGlobalTimeline*(): Future[Timeline] {.async.} =
+  let
+    url = apiReq(graphBirdwatchGlobalTimeline, birdwatchGlobalTimelineVars, features=gqlFeatures)
+    js = await fetch(url)
+  result = parseBirdwatchGlobalTimeline(js)
+
+proc getGraphCommunityNotesNew*(): Future[Timeline] {.async.} =
+  let
+    url = apiReq(graphGenericTimelineById, genericTimelineVars % communityNotesNewTimelineId,
+                 features=gqlFeatures)
+    js = await fetch(url)
+  result = parseGenericTweetTimeline(js)
 
 proc getGraphTweetSearch*(query: Query; after=""): Future[Timeline] {.async.} =
   # workaround for #1372
@@ -294,7 +526,8 @@ proc getGraphTweetSearch*(query: Query; after=""): Future[Timeline] {.async.} =
       "querySource": "typed_query",
       "product": product,
       "withGrokTranslatedBio":true,
-      "withQuickPromoteEligibilityTweetFields":false
+      "withQuickPromoteEligibilityTweetFields":false,
+      "withBirdwatchNotes":true
     }
 
   if after.len > 0 and maxId.len == 0:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import strutils, options, times, math, tables, uri
+import strutils, options, times, math, tables, uri, algorithm, sequtils
 import packedjson, packedjson/deserialiser
 import types, parserutils, utils
 import experimental/parser/unifiedcard
@@ -12,9 +12,30 @@ proc parseVerifiedType(s: string; current: VerifiedType): VerifiedType =
 
 proc parseCommunityNote(js: JsonNode): string =
   let subtitle = js{"subtitle"}
-  result = subtitle{"text"}.getStr
-  with entities, subtitle{"entities"}:
-    result = expandBirdwatchEntities(result, entities)
+  result = expandBirdwatchEntities(subtitle{"text"}.getStr, subtitle{"entities"})
+
+proc parseNoteTrans(note: JsonNode): tuple[translatable, flagged: bool; text, lang: string] =
+  result.flagged = note{"is_community_note_translatable"}.getBool
+  let trans = note{"grok_translated_community_note_with_availability"}
+  if trans.notNull:
+    if not trans{"is_available"}.getBool(true): return
+    result.translatable = true
+    let data = trans{"data"}
+    if data{"translation_available"}.getBool(true):
+      let text = data{"translation"}.getStr
+      if text.len > 0:
+        result.text = expandNoteTranslation(text, data{"rich_text_entities"})
+        result.lang = data{"source_language"}.getStr
+  elif note{"is_community_note_translatable"}.getBool:
+    result.translatable = true
+
+proc parseNoteTranslation(note: JsonNode; tweet: Tweet) =
+  let trans = parseNoteTrans(note)
+  tweet.noteId = note{"rest_id"}.getStr
+  tweet.noteTranslatable = trans.translatable
+  tweet.noteIsTranslatable = trans.flagged
+  tweet.noteTranslation = trans.text
+  tweet.noteTransLang = trans.lang
 
 proc parseUser(js: JsonNode; id=""): User =
   if js.isNull: return
@@ -72,6 +93,11 @@ proc parseGraphUser(js: JsonNode): User =
 
     with verifiedType, user{"verification", "verified_type"}:
       result.verifiedType = parseVerifiedType(verifiedType.getStr, result.verifiedType)
+
+  # "Parody", "Commentary" or "Fan"; "None" (or missing) when not flagged
+  let label = user{"parody_commentary_fan_label"}.getStr
+  if label.len > 0 and label.toLowerAscii != "none":
+    result.parodyLabel = label
 
 proc parseAboutAccount*(js: JsonNode): AccountInfo =
   if js.isNull: return
@@ -495,11 +521,14 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull();
     hasThread: js{"self_thread"}.notNull,
     available: true,
     user: User(id: js{"user_id_str"}.getStr),
+    expUrl: js{"expanded"}.getStr,
     stats: TweetStats(
       replies: js{"reply_count"}.getInt,
       retweets: js{"retweet_count"}.getInt,
+      quotes: js{"quote_count"}.getInt,
       likes: js{"favorite_count"}.getInt,
-      views: js{"views_count"}.getInt
+      views: js{"views_count"}.getInt,
+      source: js{"source"}.getStr
     )
   )
 
@@ -619,6 +648,7 @@ proc parseGraphTweet*(js: JsonNode): Tweet =
       stats: TweetStats(
         replies: js{"counts", "reply_count"}.getInt,
         retweets: js{"counts", "retweet_count"}.getInt,
+        quotes: js{"counts", "quote_count"}.getInt,
         likes: js{"counts", "favorite_count"}.getInt,
       )
     )
@@ -679,8 +709,22 @@ proc parseGraphTweet*(js: JsonNode): Tweet =
   with count, js{"views", "count"}:
     result.stats.views = count.getStr("0").parseInt
 
+  with source, js{"source"}:
+    result.stats.source = source.getStr
+
   with noteTweet, js{"note_tweet", "note_tweet_results", "result"}:
     result.expandNoteTweetEntities(noteTweet)
+
+  let hasAiDisclosure =
+    js{"content_disclosure", "ai_generated_disclosure", "has_ai_generated_media"}.getBool
+
+  var hasGrokPost = false
+  for media in js{"legacy", "entities", "media"}:
+    if media{"grok_post_id"}.getStr.len > 0:
+      hasGrokPost = true
+      break
+
+  result.isAI = hasAiDisclosure or hasGrokPost
 
   parseMediaEntities(js, result)
 
@@ -692,7 +736,6 @@ proc parseGraphTweet*(js: JsonNode): Tweet =
       if cardPath.len > 0 and cardPath == result.attributionLink:
         get(result.card).kind = hidden
 
-  # Handle retweets - check both legacy and top-level paths
   with reposts, js{"legacy", "repostedStatusResults"}:
     with rt, reposts{"result"}:
       if "legacy" in rt or "rest_id" in rt:
@@ -707,12 +750,35 @@ proc parseGraphTweet*(js: JsonNode): Tweet =
     else:
       result.quote = some Tweet(id: js{"legacy", "quoted_status_id_str"}.getId)
 
+  if result.quote.isSome and not result.quote.get.available:
+    let expanded = js{"legacy", "quoted_status_permalink", "expanded"}.getStr
+    if expanded.len > 0:
+      if expanded.isTwitterUrl:
+        result.quote.get.expUrl = expanded.localizeTwitterLink
+      if result.quote.get.text.len == 0:
+        let username = extractUsername(expanded)
+        if username.len > 0:
+          result.quote.get.text = "This post from @" & username & " is unavailable."
+
   with ids, js{"edit_control", "edit_control_initial", "edit_tweet_ids"}:
     for id in ids:
       result.history.add parseBiggestInt(id.getStr)
 
   with birdwatch, js{"birdwatch_pivot"}:
     result.note = parseCommunityNote(birdwatch)
+    parseNoteTranslation(birdwatch{"note"}, result)
+
+  with trans, js{"grok_translated_post_with_availability"}:
+    if trans{"is_available"}.getBool(true):
+      result.translatable = true
+      with data, trans{"data"}:
+        let text = data{"translation"}.getStr
+        if text.len > 0:
+          result.translation = expandTranslation(text, data{"entities"})
+          result.transLang = data{"source_language"}.getStr
+
+  result.isTranslatable = js{"is_translatable"}.getBool
+  result.hasBirdwatch = js{"has_birdwatch_notes"}.getBool or not js{"birdwatch_pivot"}.isNull
 
 proc getConvSection(js: JsonNode): string =
   let details = select(
@@ -946,6 +1012,152 @@ proc parseGraphPhotoRail*(js: JsonNode): PhotoRail =
 
           if result.len == 16:
             return
+
+proc parseGraphRetweetersTimeline*(js: JsonNode; after=""): UsersTimeline =
+  result = UsersTimeline(beginning: after.len == 0)
+
+  let instructions = js{"data", "retweeters_timeline", "timeline", "instructions"}
+  if instructions.len == 0:
+    return
+
+  for instruction in instructions:
+    if instruction.getTypeName == "TimelineAddEntries":
+      for e in instruction{"entries"}:
+        let entryType = e{"content", "entryType"}.getStr
+        if entryType == "TimelineTimelineItem":
+          with userRes, e{"content", "itemContent", "user_results", "result"}:
+            result.content.add parseGraphUser(userRes)
+        elif entryType == "TimelineTimelineCursor":
+          if e{"content", "cursorType"}.getStr == "Bottom":
+            result.bottom = e{"content", "value"}.getStr
+
+proc parseBirdwatchNotes*(js: JsonNode): BirdwatchNotes =
+  let tweetResult = js{"data", "tweet_result_by_rest_id", "result"}
+  if tweetResult.isNull:
+    return
+
+  proc extractNotes(bucket: JsonNode; misleading: bool): seq[BirdwatchNote] =
+    for note in bucket{"notes"}:
+      let text = note{"data_v1", "summary", "text"}.getStr
+
+      var misleadingTags: seq[string]
+      for t in note{"data_v1", "misleading_tags"}:
+        misleadingTags.add t.getStr
+
+      var helpfulTags: seq[string]
+      for t in note{"helpful_tags"}:
+        helpfulTags.add t.getStr
+
+      let trans = parseNoteTrans(note)
+      result.add BirdwatchNote(
+        id: note{"rest_id"}.getStr,
+        text: text,
+        helpful: note{"rating_status"}.getStr == "CurrentlyRatedHelpful",
+        misleading: misleading,
+        createdAt: note{"created_at"}.getTimeFromMs,
+        authorAlias: note{"birdwatch_profile", "alias"}.getStr,
+        classification: note{"data_v1", "classification"}.getStr,
+        misleadingTags: misleadingTags,
+        helpfulTags: helpfulTags,
+        decidedBy: note{"decided_by"}.getStr,
+        translatable: trans.translatable,
+        isTranslatable: trans.flagged,
+        translation: trans.text,
+        transLang: trans.lang
+      )
+
+  # misleading notes first, then not-misleading, per each bucket's own order
+  result.notes = extractNotes(tweetResult{"misleading_birdwatch_notes"}, misleading=true)
+  result.notes.add extractNotes(tweetResult{"not_misleading_birdwatch_notes"}, misleading=false)
+
+proc parseBirdwatchHistory*(js: JsonNode): BirdwatchHistory =
+  let profile = js{"data", "birdwatch_profile_by_alias"}
+  if profile.isNull:
+    return
+
+  result.alias = profile{"alias"}.getStr
+  result.bottom = profile{"notes_slice", "slice_info", "next_cursor"}.getStr
+
+  for note in profile{"notes_slice", "notes"}:
+    let tweetResult = note{"tweet_results", "result"}
+    result.notes.add BirdwatchHistoryNote(
+      id: note{"rest_id"}.getStr,
+      text: note{"data_v1", "summary", "text"}.getStr,
+      helpful: note{"rating_status"}.getStr == "CurrentlyRatedHelpful",
+      classification: note{"data_v1", "classification"}.getStr,
+      createdAt: note{"created_at"}.getTimeFromMs,
+      tweetId: tweetResult{"rest_id"}.getId,
+      tweetUsername: tweetResult{"core", "user_results", "result", "core", "screen_name"}.getStr
+    )
+
+proc parseBirdwatchOneNote*(js: JsonNode): BirdwatchSingleNote =
+  let note = js{"data", "birdwatch_note_by_rest_id"}
+  if note.isNull:
+    return
+
+  var misleadingTags: seq[string]
+  for t in note{"data_v1", "misleading_tags"}:
+    misleadingTags.add t.getStr
+
+  var helpfulTags: seq[string]
+  for t in note{"helpful_tags"}:
+    helpfulTags.add t.getStr
+
+  let
+    classification = note{"data_v1", "classification"}.getStr
+    trans = parseNoteTrans(note)
+
+  result.note = BirdwatchNote(
+    id: note{"rest_id"}.getStr,
+    text: note{"data_v1", "summary", "text"}.getStr,
+    helpful: note{"rating_status"}.getStr == "CurrentlyRatedHelpful",
+    misleading: classification == "MisinformedOrPotentiallyMisleading",
+    createdAt: note{"created_at"}.getTimeFromMs,
+    authorAlias: note{"birdwatch_profile", "alias"}.getStr,
+    classification: classification,
+    misleadingTags: misleadingTags,
+    helpfulTags: helpfulTags,
+    decidedBy: note{"decided_by"}.getStr,
+    translatable: trans.translatable,
+    isTranslatable: trans.flagged,
+    translation: trans.text,
+    transLang: trans.lang
+  )
+  result.tweetId = note{"tweet_results", "result", "rest_id"}.getId
+
+proc sortNewestFirst(tl: var Timeline) =
+  proc newest(thread: Tweets): int64 =
+    thread.mapIt(it.id).foldl(max(a, b), 0'i64)
+  tl.content.sort(proc (a, b: Tweets): int = cmp(b.newest, a.newest))
+
+proc parseBirdwatchGlobalTimeline*(js: JsonNode): Timeline =
+  result = Timeline(beginning: true)
+  let instructions = js{"data", "viewer", "birdwatch_home_page", "body",
+                        "initialTimeline", "timeline", "timeline", "instructions"}
+  if instructions.len == 0:
+    return
+  for i in instructions:
+    if i{"entries"}.notNull:
+      for e in i{"entries"}:
+        if e.getEntryId.startsWith("tweet"):
+          for tweet in extractTweetsFromEntry(e):
+            tweet.hasBirdwatch = true
+            result.content.add tweet
+  result.sortNewestFirst
+
+proc parseGenericTweetTimeline*(js: JsonNode): Timeline =
+  result = Timeline(beginning: true)
+  let instructions = js{"data", "timeline", "timeline", "instructions"}
+  if instructions.len == 0:
+    return
+  for i in instructions:
+    if i{"entries"}.notNull:
+      for e in i{"entries"}:
+        if e.getEntryId.startsWith("tweet"):
+          for tweet in extractTweetsFromEntry(e):
+            tweet.hasBirdwatch = true
+            result.content.add tweet
+  result.sortNewestFirst
 
 proc parseGraphSearch*[T: User | Tweets | ListSearchResult](js: JsonNode; after=""): Result[T] =
   result = Result[T](beginning: after.len == 0)

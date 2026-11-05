@@ -42,8 +42,10 @@ proc getConfig*(path: string): (Config, parseCfg.Config) =
     enableRSSUserReplies: masterRss and cfg.get("Config", "enableRSSUserReplies", true),
     enableRSSUserMedia: masterRss and cfg.get("Config", "enableRSSUserMedia", true),
     enableRSSUserArticles: masterRss and cfg.get("Config", "enableRSSUserArticles", true),
+    enableRSSUserReposts: masterRss and cfg.get("Config", "enableRSSUserReposts", true),
     enableRSSSearch: masterRss and cfg.get("Config", "enableRSSSearch", true),
     enableRSSList: masterRss and cfg.get("Config", "enableRSSList", true),
+    enableRSSCommunityNotes: masterRss and cfg.get("Config", "enableRSSCommunityNotes", true),
     enableDebug: cfg.get("Config", "enableDebug", false),
     proxy: cfg.get("Config", "proxy", ""),
     proxyAuth: cfg.get("Config", "proxyAuth", ""),
@@ -52,7 +54,24 @@ proc getConfig*(path: string): (Config, parseCfg.Config) =
     maxConcurrentReqs: cfg.get("Config", "maxConcurrentReqs", 2),
     maxRetries: cfg.get("Config", "maxRetries", 1),
     retryDelayMs: cfg.get("Config", "retryDelayMs", 150),
-    apiTimeoutMs: cfg.get("Config", "apiTimeoutMs", 15000)
+    apiTimeoutMs: cfg.get("Config", "apiTimeoutMs", 15000),
+    # guest-token auth: bypasses the account sessions.jsonl entirely when enabled
+    guestAuth: cfg.get("Config", "guestAuth", false),
+    guestPoolSize: cfg.get("Config", "guestPoolSize", 1),
+
+    # trending topics tabs shown on the main page
+    enableTrends: cfg.get("Config", "enableTrends", false),
+    trendsTab1Name: cfg.get("Config", "trendsTab1Name", "United States"),
+    trendsTab1Woeid: cfg.get("Config", "trendsTab1Woeid", 23424977),
+    trendsTab2Name: cfg.get("Config", "trendsTab2Name", "Worldwide"),
+    trendsTab2Woeid: cfg.get("Config", "trendsTab2Woeid", 1),
+    trendsCacheMinutes: cfg.get("Config", "trendsCacheMinutes", 15),
+    trendsMaxItems: cfg.get("Config", "trendsMaxItems", 15),
+    showCommunityNotesNav: cfg.get("Config", "showCommunityNotesNav", true),
+    showRetweetTime: cfg.get("Config", "showRetweetTime", true),
+    enableTranslation: cfg.get("Config", "enableTranslation", true),
+    onDemandTranslation: cfg.get("Config", "onDemandTranslation", false),
+    onDemandTranslationLang: cfg.get("Config", "onDemandTranslationLang", "en")
   )
 
   return (conf, cfg)

@@ -3,7 +3,7 @@ import tables, macros, strutils
 import karax/[karaxdsl, vdom]
 
 import renderutils
-import ../types, ../prefs_impl
+import ../[types, prefs_impl, apiutils]
 
 macro renderPrefs*(): untyped =
   result = nnkCall.newTree(
@@ -30,7 +30,18 @@ macro renderPrefs*(): untyped =
         else:
           stmt[0].add newLit(pref.options)
 
-      result[2].add stmt
+      if pref.name == "autoTranslate":
+        result[2].add nnkIfStmt.newTree(
+          nnkElifBranch.newTree(
+            nnkPrefix.newTree(ident("not"), nnkCall.newTree(ident("isGuestAuth"))),
+            stmt))
+      elif pref.name == "guestSearchFallback":
+        result[2].add nnkIfStmt.newTree(
+          nnkElifBranch.newTree(
+            nnkCall.newTree(ident("isGuestAuth")),
+            stmt))
+      else:
+        result[2].add stmt
 
 proc renderPreferences*(prefs: Prefs; path: string; themes: seq[string];
                         prefsUrl: string): VNode =

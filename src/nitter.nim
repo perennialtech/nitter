@@ -6,8 +6,9 @@ from os import getEnv, normalizedPath
 
 import jester
 
-import types, config, prefs, formatters, redis_cache, http_client, auth, apiutils
+import types, config, prefs, formatters, redis_cache, http_client, auth, apiutils, trends
 import views/[general, about]
+import views/trends as trendsView
 import routes/[
   preferences, timeline, status, media, search, rss, list, community, debug,
   unsupported, embed, resolver, broadcast, space, article, router_utils]
@@ -23,8 +24,25 @@ let
   (cfg, fullCfg) = getConfig(configPath)
 
   sessionsPath = getEnv("NITTER_SESSIONS_FILE", "./sessions.jsonl")
+  hasHmacKey = cfg.hmacKey.len > 0 and cfg.hmacKey != "secretkey"
 
-initSessionPool(cfg, sessionsPath)
+if cfg.guestAuth:
+  try:
+    setGuestAuth(getEnv("NITTER_GUEST_BEARER_TOKEN"), cfg.guestPoolSize)
+  except ValueError as e:
+    quit e.msg
+else:
+  initSessionPool(cfg, sessionsPath)
+
+setShowRetweetTime(cfg.showRetweetTime)
+setEnableTranslation(cfg.enableTranslation)
+if cfg.onDemandTranslation and cfg.enableTranslation:
+  if cfg.guestAuth:
+    echo "[translation] onDemandTranslation requires cookie sessions"
+  elif not hasHmacKey:
+    echo "[translation] onDemandTranslation requires a unique hmacKey"
+setOnDemandTranslation(cfg.onDemandTranslation and cfg.enableTranslation and
+                       not cfg.guestAuth and hasHmacKey, cfg.onDemandTranslationLang)
 
 if not cfg.enableDebug:
   # Silence Jester's query warning
@@ -37,7 +55,7 @@ stdout.flushFile
 updateDefaultPrefs(fullCfg)
 setCacheTimes(cfg)
 setHmacKey(cfg.hmacKey)
-if cfg.hmacKey.len == 0 or cfg.hmacKey == "secretkey":
+if not hasHmacKey:
   stderr.write "WARNING: insecure default 'hmacKey' in nitter.conf; " &
     "set a unique random value to stop media URL signatures being forgeable.\n"
   stderr.flushFile
@@ -49,6 +67,7 @@ setMaxConcurrentReqs(cfg.maxConcurrentReqs)
 setMaxRetries(cfg.maxRetries)
 setRetryDelayMs(cfg.retryDelayMs)
 setApiTimeoutMs(cfg.apiTimeoutMs)
+setTrendsCacheMinutes(cfg.trendsCacheMinutes)
 initAboutPage(cfg.staticDir)
 
 waitFor initRedisPool(cfg)
@@ -89,7 +108,19 @@ routes:
     applyUrlPrefs()
 
   get "/":
-    resp renderMain(renderSearch(), request, cfg, requestPrefs())
+    let search = renderSearch()
+    let body =
+      if cfg.enableTrends:
+        let
+          first = getTrends(cfg.trendsTab1Woeid, cfg.trendsMaxItems)
+          second = getTrends(cfg.trendsTab2Woeid, cfg.trendsMaxItems)
+          tab1 = await first
+          tab2 = await second
+        trendsView.renderHomeBody(cfg.trendsTab1Name, tab1,
+                                   cfg.trendsTab2Name, tab2, search)
+      else:
+        search
+    resp renderMain(body, request, cfg, requestPrefs())
 
   get "/about":
     resp renderMain(renderAbout(), request, cfg, requestPrefs())
