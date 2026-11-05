@@ -11,6 +11,7 @@ const
 var
   sessionPool: seq[Session]
   guestPool: seq[Session]
+  guestPoolChanged: Future[void]
   guestPoolSize = 1
   enableLogging = false
   # max requests at a time per session to avoid race conditions
@@ -245,8 +246,20 @@ proc isGuestReady(session: Session; req: ApiReq): bool =
 proc guestPoolFull*(): bool =
   guestPool.len >= guestPoolSize
 
+proc waitForGuestPoolChange*(): Future[void] =
+  if guestPoolChanged.isNil or guestPoolChanged.finished:
+    guestPoolChanged = newFuture[void]("guest pool changed")
+  guestPoolChanged
+
+proc notifyGuestPoolChange*() =
+  let pending = guestPoolChanged
+  guestPoolChanged = nil
+  if not pending.isNil and not pending.finished:
+    pending.complete()
+
 proc addGuestSession*(session: Session) =
   guestPool.add session
+  notifyGuestPoolChange()
 
 proc registerGuestRequest*(session: Session) =
   if not session.isNil and session.kind == guest:
@@ -260,7 +273,9 @@ proc invalidate*(session: var Session) =
   case session.kind
   of guest:
     let idx = guestPool.find(session)
-    if idx > -1: guestPool.delete(idx)
+    if idx > -1:
+      guestPool.delete(idx)
+      notifyGuestPoolChange()
   of oauth, cookie:
     let idx = sessionPool.find(session)
     if idx > -1: sessionPool.delete(idx)
@@ -269,12 +284,19 @@ proc invalidate*(session: var Session) =
 proc release*(session: Session) =
   if session.isNil: return
   dec session.pending
+  if session.kind == guest:
+    notifyGuestPoolChange()
 
 proc getGuestSession*(req: ApiReq): Session =
   for session in guestPool:
     if session.isGuestReady(req):
       inc session.pending
       return session
+
+proc hasBusyGuestSession*(req: ApiReq): bool =
+  for session in guestPool:
+    if session.pending > 0 and not session.needsRotation and not session.isLimited(req):
+      return true
 
 proc findIdleStaleGuestSession*(req: ApiReq): Session =
   for session in guestPool:

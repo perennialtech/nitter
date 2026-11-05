@@ -220,43 +220,49 @@ proc activateGuestToken(): Future[Session] {.async.} =
 
 type GuestActivator* = proc(): Future[Session] {.closure.}
 
+proc finishGuestActivation(activation: Future[Session]) {.async.} =
+  var fresh: Session
+  try:
+    fresh = await activation
+  except CatchableError:
+    guestActivation = nil
+    notifyGuestPoolChange()
+    return
+  guestActivation = nil
+  addGuestSession(fresh)
+
 proc getReadyGuestSession*(req: ApiReq;
                            activate: GuestActivator = activateGuestToken): Future[Session] {.async.} =
+  var activationFailed = false
   while true:
     result = getGuestSession(req)
     if not result.isNil: return
 
-    # Check for another free slot after the current activation. A burst can
-    # fill the new session before every waiter has acquired a lease.
-    let activation = guestActivation
-    if activation.isNil: break
-    try:
-      discard await activation
-    except CatchableError:
-      raise rateLimitError()
+    # Register before changing the pool: an injected activator may complete
+    # synchronously, and its notification must not be missed.
+    let changed = waitForGuestPoolChange()
+    var activation = guestActivation
+    if activation.isNil:
+      if activationFailed:
+        if not hasBusyGuestSession(req):
+          raise rateLimitError()
+      else:
+        var stale = findIdleStaleGuestSession(req)
+        if not stale.isNil:
+          invalidate(stale)
 
-  var stale = findIdleStaleGuestSession(req)
-  if not stale.isNil:
-    invalidate(stale)
+        if not guestPoolFull():
+          activation = activate()
+          guestActivation = activation
+          asyncCheck finishGuestActivation(activation)
 
-  if guestPoolFull():
-    await sleepAsync(200)
+    await changed
     result = getGuestSession(req)
-    if result.isNil: raise rateLimitError()
-    return
-
-  let activation = activate()
-  guestActivation = activation
-  try:
-    try:
-      let fresh = await activation
-      addGuestSession(fresh)
-      inc fresh.pending
-      result = fresh
-    except CatchableError:
-      raise rateLimitError()
-  finally:
-    guestActivation = nil
+    if not result.isNil: return
+    if not activation.isNil and activation.finished and activation.failed:
+      activationFailed = true
+      if not hasBusyGuestSession(req):
+        raise rateLimitError()
 
 proc getAndValidateSession*(req: ApiReq): Future[Session] {.async.} =
   if isGuestAuth():

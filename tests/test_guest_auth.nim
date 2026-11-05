@@ -75,13 +75,96 @@ proc checkBusyGuestBecomesAvailable() {.async.} =
   addGuestSession(guestSession)
   try:
     let acquisition = getReadyGuestSession(request, unexpectedActivation)
-    await sleepAsync(10)
+    await sleepAsync(350)
     release(guestSession)
     let selected = await acquisition
     doAssert selected == guestSession and selected.pending == 1
     release(selected)
   finally:
     invalidate(guestSession)
+    setMaxConcurrentReqs(2)
+
+proc checkReleasedGuestDuringActivationFailure() {.async.} =
+  let gate = newFuture[Session]("pending guest activation")
+  var
+    activations = 0
+    existing = Session(kind: guest, guestToken: "existing",
+                       guestCreated: epochTime().int, pending: 1)
+  proc activate(): Future[Session] =
+    inc activations
+    gate
+
+  setGuestPoolSize(2)
+  setMaxConcurrentReqs(1)
+  addGuestSession(existing)
+  try:
+    let
+      first = getReadyGuestSession(request, activate)
+      second = getReadyGuestSession(request, activate)
+    doAssert activations == 1
+
+    release(existing)
+    await sleepAsync(30)
+    let acquiredBeforeFailure = first.finished or second.finished
+    gate.fail(newException(IOError, "activation unavailable"))
+
+    var successful = 0
+    for pending in [first, second]:
+      try:
+        let selected = await pending
+        doAssert selected == existing
+        inc successful
+        release(selected)
+      except RateLimitError:
+        discard
+    doAssert acquiredBeforeFailure and successful == 2 and activations == 1,
+      "all waiters must reuse released sessions despite a failing activation"
+  finally:
+    if not gate.finished:
+      gate.fail(newException(IOError, "activation unavailable"))
+    invalidate(existing)
+    setGuestPoolSize(1)
+    setMaxConcurrentReqs(2)
+
+proc checkFailedActivationWaitsForBusyGuest() {.async.} =
+  let gate = newFuture[Session]("failed guest activation with busy session")
+  var
+    activations = 0
+    existing = Session(kind: guest, guestToken: "existing",
+                       guestCreated: epochTime().int, pending: 1)
+  proc activate(): Future[Session] =
+    inc activations
+    gate
+
+  setGuestPoolSize(2)
+  setMaxConcurrentReqs(1)
+  addGuestSession(existing)
+  try:
+    let
+      first = getReadyGuestSession(request, activate)
+      second = getReadyGuestSession(request, activate)
+    doAssert activations == 1
+    gate.fail(newException(IOError, "guest activation rate limited"))
+    await sleepAsync(30)
+    let remainedQueued = not first.finished and not second.finished
+
+    release(existing)
+    var acquired = 0
+    for pending in [first, second]:
+      try:
+        let selected = await pending
+        doAssert selected == existing
+        inc acquired
+        release(selected)
+      except RateLimitError:
+        discard
+    doAssert remainedQueued and acquired == 2 and activations == 1,
+      "a failed activation must not reject or retry healthy busy guest waiters"
+  finally:
+    if not gate.finished:
+      gate.fail(newException(IOError, "guest activation unavailable"))
+    invalidate(existing)
+    setGuestPoolSize(1)
     setMaxConcurrentReqs(2)
 
 proc checkIdleStaleGuestRotation() {.async.} =
@@ -200,6 +283,12 @@ suite "guest sessions":
 
   test "a guest released during the full-pool wait is reused":
     waitFor checkBusyGuestBecomesAvailable()
+
+  test "a released guest remains usable while activation fails":
+    waitFor checkReleasedGuestDuringActivationFailure()
+
+  test "failed activation does not reject healthy busy guest waiters":
+    waitFor checkFailedActivationWaitsForBusyGuest()
 
   test "an idle stale guest is replaceable behind a busy stale guest":
     waitFor checkIdleStaleGuestRotation()
