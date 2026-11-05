@@ -73,16 +73,17 @@ proc fetchProfile*(after: string; query: Query; prefs: Prefs;
 
     user = getCachedUser(name)
     info = getCachedAccountInfo(name, fetch=false)
+    useGuestSearch = isGuestAuth() and not rss
 
   result =
     case query.kind
     of posts:
-      if isGuestAuth() and prefs.guestSearchFallback:
+      if useGuestSearch and prefs.guestSearchFallback:
         Profile(tweets: await getGraphTweetSearch(query, after))
       else:
         await getGraphUserTweets(userId, TimelineKind.tweets, after, rss)
     of replies:
-      if isGuestAuth():
+      if useGuestSearch:
         Profile(tweets: await getGraphTweetSearch(query, after))
       else:
         await getGraphUserTweets(userId, TimelineKind.replies, after, rss)
