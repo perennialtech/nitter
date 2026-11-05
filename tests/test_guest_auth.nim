@@ -65,6 +65,25 @@ proc checkConcurrentGuestPoolGrowth() {.async.} =
     setGuestPoolSize(1)
     setMaxConcurrentReqs(2)
 
+proc checkBusyGuestBecomesAvailable() {.async.} =
+  var guestSession = Session(kind: guest, guestToken: "busy",
+                             guestCreated: epochTime().int, pending: 1)
+  proc unexpectedActivation(): Future[Session] {.async.} =
+    doAssert false, "a healthy busy session must be reused"
+  setGuestPoolSize(1)
+  setMaxConcurrentReqs(1)
+  addGuestSession(guestSession)
+  try:
+    let acquisition = getReadyGuestSession(request, unexpectedActivation)
+    await sleepAsync(10)
+    release(guestSession)
+    let selected = await acquisition
+    doAssert selected == guestSession and selected.pending == 1
+    release(selected)
+  finally:
+    invalidate(guestSession)
+    setMaxConcurrentReqs(2)
+
 proc checkIdleStaleGuestRotation() {.async.} =
   let expiredAt = epochTime().int - guestMaxAgeSeconds - 1
   var
@@ -178,6 +197,9 @@ suite "guest sessions":
 
   test "waiting callers can fill free guest pool slots":
     waitFor checkConcurrentGuestPoolGrowth()
+
+  test "a guest released during the full-pool wait is reused":
+    waitFor checkBusyGuestBecomesAvailable()
 
   test "an idle stale guest is replaceable behind a busy stale guest":
     waitFor checkIdleStaleGuestRotation()

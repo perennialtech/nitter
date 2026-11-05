@@ -241,7 +241,9 @@ proc getReadyGuestSession*(req: ApiReq;
 
   if guestPoolFull():
     await sleepAsync(200)
-    raise rateLimitError()
+    result = getGuestSession(req)
+    if result.isNil: raise rateLimitError()
+    return
 
   let activation = activate()
   guestActivation = activation
