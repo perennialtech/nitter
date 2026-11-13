@@ -1,0 +1,48 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "articleMedia" -}}
+<div class="article-media">
+  {{- range .Items}}
+  {{- if eq .Kind "ApiGif"}}
+  <video src="{{url .Vid}}" controls="" autoplay="" loop="" muted=""></video>
+  {{- else if eq .Kind "ApiVideo"}}
+  <video src="{{url .Vid}}" controls=""></video>
+  {{- else}}
+  <a href="{{url .Orig}}" target="_blank"><img src="{{url .Small}}" alt="{{$.Caption}}" loading="lazy"></a>
+  {{- end}}
+  {{- end}}
+  {{- with .Caption}}
+  <p class="article-media-caption">{{.}}</p>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "articleCode" -}}
+<pre><code>{{.}}</code></pre>
+{{- end}}
+
+{{- define "article" -}}
+<div class="article-page">
+  {{- if .A.CoverImage}}
+  <a href="{{url .CoverURL}}" target="_blank"><img class="article-cover" src="{{url .CoverSrc}}" alt=""></a>
+  {{- end}}
+  <article class="article-body">
+    <h1 class="article-title">{{.A.Title}}</h1>
+    <div class="article-author">
+      <div class="article-author-row">
+        <a class="article-avatar" href="/{{.Author.Username}}">{{genImg (userPic .Author.UserPic "_bigger") .AvatarClass}}</a>
+        <div class="article-author-info">
+          <div class="article-author-name">{{linkUser .Author "fullname"}}{{verifiedIcon .Author}}</div>
+          <div class="article-author-meta">
+            {{- linkUser .Author "username" -}}
+            <span class="article-date-sep"> · </span>
+            <a class="article-date" href="{{url .DateURL}}">{{.Date}}</a>
+          </div>
+        </div>
+      </div>
+      {{- .Stats -}}
+    </div>
+    {{- .Body -}}
+  </article>
+  {{- renderToTop "#" -}}
+</div>
+{{- end}}

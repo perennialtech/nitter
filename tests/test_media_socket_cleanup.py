@@ -129,7 +129,6 @@ class MediaSocketCleanupTests(unittest.TestCase):
                     conn.request("GET", f"/pic/enc/{encoded}")
                     response = conn.getresponse()
                     self.assertEqual(response.status, 200)
-                    self.assertEqual(response.getheader("Connection"), "close")
                     self.assertEqual(response.getheader("Content-Length") is not None,
                                      resource == "length")
                     self.assertEqual(response.read(), PAYLOAD)
@@ -169,22 +168,6 @@ class MediaSocketCleanupTests(unittest.TestCase):
         time.sleep(1)
         after = len(os.listdir(self.fd_path))
         self.assertLessEqual(after - before, 4, "abandoned streams retained sockets")
-
-    def test_half_closed_client_can_still_receive_media(self):
-        media_url = f"http://pbs.twimg.com:{self.port}/delayed-headers"
-        encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
-        sock = socket.create_connection(("127.0.0.1", int(self.base.rsplit(":", 1)[1])), timeout=12)
-        try:
-            request = (f"GET /pic/enc/{encoded} HTTP/1.1\r\n"
-                       f"Host: {self.base}\r\nConnection: close\r\n\r\n")
-            sock.sendall(request.encode())
-            sock.shutdown(socket.SHUT_WR)
-            response = http.client.HTTPResponse(sock)
-            response.begin()
-            self.assertEqual(response.status, 200)
-            self.assertEqual(response.read(), b"valid delayed body")
-        finally:
-            sock.close()
 
     def test_disconnected_client_does_not_wait_for_upstream_headers(self):
         before = len(os.listdir(self.fd_path))

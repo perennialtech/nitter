@@ -1,0 +1,91 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "userCard" -}}
+<div class="profile-card">
+  <div class="profile-card-info">
+    <a class="profile-card-avatar" href="{{url .AvatarURL}}" target="_blank">{{genImg .Avatar}}</a>
+    <div class="profile-card-tabs-name">
+      {{- linkUser .U "profile-card-fullname"}}
+      {{- verifiedIcon .U}}
+      {{- linkUser .U "profile-card-username"}}
+      {{- profileLabel .U -}}
+    </div>
+  </div>
+  <div class="profile-card-extra">
+    {{- if .U.Bio}}
+    <div class="profile-bio"><p dir="auto">{{.Bio}}</p></div>
+    {{- end}}
+    {{- if .U.Location}}
+    <div class="profile-location">
+      <span>{{icon "location"}}</span>
+      {{- if .PlaceURL}}<a href="{{url .PlaceURL}}">{{.Place}}</a>{{else}}<span>{{.Place}}</span>{{end -}}
+    </div>
+    {{- end}}
+    {{- with .Info.BasedIn}}
+    <div class="profile-location">
+      <span>{{icon "location"}}</span>
+      <span>Based in {{.}}</span>
+    </div>
+    {{- end}}
+    {{- if .U.Website}}
+    <div class="profile-website">
+      <span>{{icon "link"}}<a href="{{url .Website}}">{{.WebsiteText}}</a></span>
+    </div>
+    {{- end}}
+    <div class="profile-joindate">
+      <a href="{{url .JoinURL}}" title="{{.JoinFull}}">{{icon "calendar" "label" .JoinDate}}</a>
+    </div>
+    <div class="profile-card-extra-links">
+      <ul class="profile-statlist">
+        {{- range .Stats}}
+        <li class="{{.Class}}">
+          {{- if .Href}}<a href="{{url .Href}}">{{end -}}
+          <span class="profile-stat-header">{{.Header}}</span>
+          <span class="profile-stat-num">{{.Num}}</span>
+          {{- if .Href}}</a>{{end -}}
+        </li>
+        {{- end}}
+      </ul>
+    </div>
+  </div>
+</div>
+{{- end}}
+
+{{- define "photoRail" -}}
+<div class="photo-rail-card">
+  <div class="photo-rail-header"><a href="{{url .MediaURL}}">{{icon "picture" "label" .Label}}</a></div>
+  <input id="photo-rail-grid-toggle" type="checkbox">
+  <label for="photo-rail-grid-toggle" class="photo-rail-header-mobile">{{icon "picture" "label" .Label}}{{icon "down"}}</label>
+  <div class="photo-rail-grid">
+    {{- range .Photos}}
+    <a href="{{url .Href}}">{{genImg .Pic}}</a>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "banner" -}}
+{{- if .URL}}<a href="{{url .URL}}" target="_blank">{{genImg .Banner}}</a>
+{{- else if .Color}}<a style="{{.Color}}"></a>
+{{- else}}<a></a>{{end -}}
+{{- end}}
+
+{{- define "protected" -}}
+<div class="timeline-container">
+  <div class="timeline-header timeline-protected">
+    <h2>This account's tweets are protected.</h2>
+    <p>{{.}}</p>
+  </div>
+</div>
+{{- end}}
+
+{{- define "profile" -}}
+<div class="{{.Class}}">
+  {{- with .Banner}}
+  <div class="profile-banner">{{.}}</div>
+  {{- end}}
+  {{- with .Card}}
+  <div class="{{$.TabClass}}">{{.}}</div>
+  {{- end}}
+  {{- .Body -}}
+</div>
+{{- end}}

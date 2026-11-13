@@ -1,0 +1,74 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "search" -}}
+<div class="panel-container">
+  <div class="search-bar">
+    <form method="get" action="/search" autocomplete="off">
+      {{- hiddenField "f" "tweets"}}
+      <input type="text" name="q" autofocus="" placeholder="Search..." dir="auto">
+      <button type="submit">{{icon "search"}}</button>
+    </form>
+  </div>
+</div>
+{{- end}}
+
+{{- define "tabs" -}}
+<ul class="{{.Class}}">
+  {{- range .Tabs}}
+  <li class="{{.Class}}"><a href="{{url .Href}}">{{.Text}}</a></li>
+  {{- end}}
+</ul>
+{{- end}}
+
+{{- define "searchPanel" -}}
+<form method="get" action="{{url .Action}}" class="search-field" autocomplete="off">
+  {{- hiddenField "f" .Kind}}
+  {{- genInput "q" "" .Q.Text "Enter search..." "pref-inline" true}}
+  <button type="submit">{{icon "search"}}</button>
+  <input id="search-panel-toggle" type="checkbox"{{if .Open}} checked=""{{end}}>
+  <label for="search-panel-toggle">{{icon "down"}}</label>
+  <div class="search-panel">
+    {{- range .Sections}}
+    <span class="search-title">{{.Title}}</span>
+    <div class="search-toggles">
+      {{- range .Toggles}}{{genCheckbox .Name .Label .State}}{{end -}}
+    </div>
+    {{- end}}
+    <div class="search-row">
+      <div>
+        <span class="search-title">Time range</span>
+        <div class="date-range">
+          {{- genDate "since" .Q.Since -}}
+          <span class="search-title">-</span>
+          {{- genDate "until" .Q.Until -}}
+        </div>
+      </div>
+      <div>
+        <span class="search-title">Minimum likes</span>
+        {{- genNumberInput "min_faves" "" .Q.MinLikes "Number..." "" false "0" -}}
+      </div>
+    </div>
+  </div>
+</form>
+{{- end}}
+
+{{- define "searchForm" -}}
+<form method="get" action="/search" class="search-field" autocomplete="off">
+  {{- hiddenField "f" .Kind}}
+  {{- genInput "q" "" .Value .Placeholder "pref-inline" true}}
+  <button type="submit">{{icon "search"}}</button>
+</form>
+{{- end}}
+
+{{- define "timelineHeader" -}}
+<div class="timeline-header">{{.}}</div>
+{{- end}}
+
+{{- define "timelineNone" -}}
+<div class="timeline-none">{{.}}</div>
+{{- end}}
+
+{{- define "container" -}}
+<div class="{{.Class}}">
+  {{- range .Parts}}{{.}}{{end -}}
+</div>
+{{- end}}

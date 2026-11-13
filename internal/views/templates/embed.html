@@ -1,0 +1,39 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "embedPage" -}}
+<!DOCTYPE html>
+<html lang="en">
+{{.Head}}
+<base target="_blank">
+<body>
+{{.Body}}
+<script>{{.JS}}</script>
+</body>
+</html>
+{{- end}}
+
+{{- define "videoEmbed" -}}
+<div class="embed-video">
+  {{- .Video}}
+  <a class="video-overlay-link" href="{{url .Link}}">Watch on {{.Hostname}}</a>
+</div>
+{{- end}}
+
+{{- define "tweetEmbed" -}}
+<div class="embed-wrapper">
+  <div class="tweet-embed">
+    <a class="tweet-link" href="{{url .Link}}"></a>
+    {{- .Tweet -}}
+  </div>
+  <a class="embed-footer" href="{{url .Link}}">Read more on {{.Hostname}}</a>
+</div>
+{{- end}}
+
+{{- define "errorEmbed" -}}
+<div class="embed-wrapper">
+  <div class="tweet-embed error-embed">
+    <a class="tweet-link" href="{{url .Link}}"></a>
+    <div class="error-panel"><span>{{.Error}}</span></div>
+  </div>
+  <a class="embed-footer" href="{{url .Link}}">Read more on {{.Hostname}}</a>
+</div>
+{{- end}}

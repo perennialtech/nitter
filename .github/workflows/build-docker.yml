@@ -3,10 +3,10 @@ name: Build and publish OCI images
 on:
   push:
     branches: ["master"]
-    paths-ignore: ["README.md", "CONTRIBUTING.md"]
+    paths-ignore: ["README.md", "AGENTS.md"]
   pull_request:
     branches: ["master"]
-    paths-ignore: ["README.md", "CONTRIBUTING.md"]
+    paths-ignore: ["README.md", "AGENTS.md"]
   workflow_dispatch:
 
 env:

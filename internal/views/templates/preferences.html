@@ -1,0 +1,59 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "legend" -}}
+<legend>{{.}}</legend>
+{{- end}}
+
+{{- define "preferences" -}}
+<div class="overlay-panel">
+  <fieldset class="preferences">
+    <form method="post" action="/saveprefs" autocomplete="off">
+      {{- hiddenField "referer" .Path}}
+      <div>{{.Prefs}}</div>
+      <legend>Bookmark</legend>
+      <p class="bookmark-note">Save this URL to restore your preferences (?prefs works on all pages)</p>
+      <pre class="prefs-code">{{.PrefsURL}}</pre>
+      <p class="bookmark-note">You can override preferences with query parameters (e.g. <code>?hlsPlayback=on</code>). These overrides aren't saved to cookies, and links won't retain the parameters. Intended for configuring RSS feeds and other cookieless environments. Hover over a preference to see its name.</p>
+      <h4 class="note">Preferences are stored client-side using cookies without any personal information.</h4>
+      <button type="submit" class="pref-submit">Save preferences</button>
+    </form>
+    {{- .Reset -}}
+  </fieldset>
+</div>
+{{- end}}
+
+{{- define "trendsList" -}}
+<ul class="trends-list">
+  {{- range .}}
+  <li class="trend-item">
+    <a href="{{url (print "/search?q=" (encodeURL .SearchQuery))}}">
+      <span class="trend-name">{{.Name}}</span>
+      {{- if ge .TweetVolume 0}}
+      <span class="trend-volume">{{.TweetVolume}} tweets</span>
+      {{- end}}
+    </a>
+  </li>
+  {{- else}}
+  <li class="trends-empty">No trends available right now.</li>
+  {{- end}}
+</ul>
+{{- end}}
+
+{{- define "trendsTabs" -}}
+<div class="trends-panel">
+  <input type="radio" name="trends-tab" id="trends-tab-1" class="trends-tab-radio" checked="checked">
+  <input type="radio" name="trends-tab" id="trends-tab-2" class="trends-tab-radio">
+  <div class="trends-tab-labels">
+    <label for="trends-tab-1" class="trends-tab-label">{{.Tab1Name}}</label>
+    <label for="trends-tab-2" class="trends-tab-label">{{.Tab2Name}}</label>
+  </div>
+  <div class="trends-tab-panel" id="trends-panel-1">{{.Tab1}}</div>
+  <div class="trends-tab-panel" id="trends-panel-2">{{.Tab2}}</div>
+</div>
+{{- end}}
+
+{{- define "homeBody" -}}
+<div class="home-panel">
+  {{- .Search}}
+  {{- .Trends -}}
+</div>
+{{- end}}

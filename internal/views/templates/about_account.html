@@ -1,0 +1,75 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "aboutAccount" -}}
+<div class="about-account">
+  <div class="about-account-header">
+    <a class="about-account-avatar" href="/{{.Info.Username}}">{{genImg .Avatar}}</a>
+    <div class="about-account-name">{{linkUser .U "profile-card-fullname"}}{{verifiedIcon .U}}</div>
+    {{- linkUser .U "profile-card-username" -}}
+  </div>
+  <div class="about-account-body">
+    <div class="about-account-row">
+      <span>{{icon "calendar"}}</span>
+      <div>
+        <span class="about-account-label">Date joined</span>
+        <span class="about-account-value">{{.Joined}}</span>
+      </div>
+    </div>
+    {{- with .Info.BasedIn}}
+    <div class="about-account-row">
+      <span>{{icon "location"}}</span>
+      <div>
+        <span class="about-account-label">Account based in</span>
+        <span class="about-account-value">{{.}}</span>
+      </div>
+    </div>
+    {{- end}}
+    {{- with .VerifiedSince}}
+    <div class="about-account-row">
+      <span>{{icon "ok"}}</span>
+      <div>
+        <span class="about-account-label">Verified</span>
+        <span class="about-account-value">{{.}}</span>
+      </div>
+    </div>
+    {{- end}}
+    {{- if .IDVerified}}
+    <div class="about-account-row">
+      <span>{{icon "ok"}}</span>
+      <div>
+        <span class="about-account-label">ID Verified</span>
+        <span class="about-account-value">Yes</span>
+      </div>
+    </div>
+    {{- end}}
+    {{- with .Affiliate}}
+    <div class="about-account-row">
+      <span>{{icon "group"}}</span>
+      <div>
+        <span class="about-account-label">An affiliate of</span>
+        <span class="about-account-value"><a href="/{{$.Info.AffiliateUsername}}">{{.}}</a></span>
+      </div>
+    </div>
+    {{- end}}
+    {{- with .Changes}}
+    <div class="about-account-row">
+      <span class="about-account-at">@</span>
+      <div>
+        <span class="about-account-label">{{.}}</span>
+        {{- with $.LastChange}}
+        <span class="about-account-value">{{.}}</span>
+        {{- end}}
+      </div>
+    </div>
+    {{- end}}
+    {{- with .Info.Source}}
+    <div class="about-account-row">
+      <span>{{icon "link"}}</span>
+      <div>
+        <span class="about-account-label">Connected via</span>
+        <span class="about-account-value">{{.}}</span>
+      </div>
+    </div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
