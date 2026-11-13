@@ -1,0 +1,11 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "opensearch" -}}
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
+                       xmlns:moz="http://www.mozilla.org/2006/browser/search/">
+  <ShortName>{{.Name}}</ShortName>
+  <Description>Twitter search via {{.Hostname}}</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <Url type="text/html" template="{{.URL}}{searchTerms}" />
+</OpenSearchDescription>
+{{end -}}

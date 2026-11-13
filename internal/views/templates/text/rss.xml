@@ -1,0 +1,160 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{/* Values are emitted as-is; the Go code escapes what the Nim filter escaped. */ -}}
+{{define "rssMedia" -}}
+{{if eq .Kind 0 -}}
+<img src="{{.Src}}" style="max-width:250px;" />
+{{else if eq .Kind 1 -}}
+<a href="{{.Link}}">
+<br>Video<br>
+  <img src="{{.Src}}" style="max-width:250px;" />
+</a>
+{{else -}}
+<video poster="{{.Poster}}" autoplay muted loop style="max-width:250px;">
+  <source src="{{.Src}}" type="video/mp4"></video>
+{{end -}}
+{{end -}}
+
+{{define "rssCard" -}}
+<hr/>
+<b>Link</b><br>
+{{if .Link}}<a href="{{xmlEscape .Link}}">
+{{end -}}
+{{if .C.Image}}<img src="{{.Prefix}}{{picURL .C.Image}}" style="max-width:250px;" />
+{{end -}}
+{{if .Title}}{{if .C.Image}}<br>
+{{end}}<b>{{.Title}}</b>
+{{end -}}
+{{if .Link}}</a>
+{{end -}}
+{{if .C.Text}}<p>{{xmlEscape .C.Text}}</p>
+{{end -}}
+{{if .Link}}<small><a href="{{xmlEscape .Link}}">{{.DestText}}</a></small>
+{{else if .C.Dest}}<small>{{xmlEscape .C.Dest}}</small>
+{{end -}}
+{{end -}}
+
+{{define "rssArticle" -}}
+<hr/>
+<b>Article</b><br>
+<a href="{{.Prefix}}/i/article/{{.Article.TweetID}}">
+{{if .Article.CoverImage}}<img src="{{.Prefix}}{{picURL .Article.CoverImage}}" style="max-width:250px;" />
+{{end -}}
+{{if .Article.Title}}{{if .Article.CoverImage}}<br>
+{{end}}<b>{{xmlEscape .Article.Title}}</b>
+{{end -}}
+</a>
+{{if .Article.PreviewText}}<p>{{xmlEscape .Article.PreviewText}}</p>
+{{end -}}
+{{end -}}
+
+{{define "rssPoll" -}}
+<hr/>
+<b>Poll</b>
+<p>
+{{range .Poll}}{{.}}<br>
+{{end -}}
+<i>{{.Votes}} votes • {{.Status}}</i>
+</p>
+{{end -}}
+
+{{define "rssTweet" -}}
+{{if .Text}}<p>{{.Text}}</p>
+{{end -}}
+{{if .Media}}{{range .Media}}{{template "rssMedia" .}}
+{{end}}{{else if .Card}}{{template "rssCard" .Card}}
+{{end -}}
+{{if .Article}}{{template "rssArticle" .}}
+{{end -}}
+{{if .T.Poll}}{{template "rssPoll" .}}
+{{end -}}
+{{if .Note}}<p><b>Community note:</b> {{.Note}}</p>
+{{end -}}
+{{with .Quote}}<hr/>
+<blockquote>
+<b>{{.User.Fullname}} (@{{.User.Username}})</b>
+<p>
+{{rssTweet . $.Cfg $.Prefs}}
+</p>
+<footer>
+— <cite><a href="{{$.QLink}}">{{$.QLink}}</a>
+</footer>
+</blockquote>
+{{end -}}
+{{end -}}
+
+{{define "rssItems" -}}
+{{range .}}      <item>
+        <title>{{.Title}}</title>
+        <dc:creator>@{{.Username}}</dc:creator>
+        <description><![CDATA[{{.Description}}]]></description>
+        <pubDate>{{.PubDate}}</pubDate>
+{{if .GlobalGUID}}        <guid isPermaLink="false">{{.ID}}</guid>
+{{else}}        <guid>{{.Link}}</guid>
+{{end}}        <link>{{.Link}}</link>
+      </item>
+{{end -}}
+{{end -}}
+
+{{define "rssHeader" -}}
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+{{end -}}
+
+{{define "timelineRss" -}}
+{{template "rssHeader"}}  <channel>
+    <atom:link href="{{.Prefix}}/{{.Username}}/rss" rel="self" type="application/rss+xml" />
+    <title>{{.Title}}</title>
+    <link>{{.Prefix}}/{{.Username}}</link>
+    <description>{{.Description}}</description>
+    <language>en-us</language>
+    <ttl>40</ttl>
+    <image>
+      <title>{{.Title}}</title>
+      <link>{{.Prefix}}/{{.Username}}</link>
+      <url>{{.Prefix}}{{.Pic}}</url>
+      <width>128</width>
+      <height>128</height>
+    </image>
+{{if .HasTweets}}{{template "rssItems" .Items}}
+{{end}}  </channel>
+</rss>
+{{end -}}
+
+{{define "listRss" -}}
+{{template "rssHeader"}}  <channel>
+    <atom:link href="{{.Link}}" rel="self" type="application/rss+xml" />
+    <title>{{.Title}}</title>
+    <link>{{.Link}}</link>
+    <description>{{.Description}}</description>
+    <language>en-us</language>
+    <ttl>40</ttl>
+{{template "rssItems" .Items}}
+ </channel>
+</rss>
+{{end -}}
+
+{{define "communityNotesRss" -}}
+{{template "rssHeader"}}  <channel>
+    <atom:link href="{{.Prefix}}{{.Link}}/rss" rel="self" type="application/rss+xml" />
+    <title>Community Notes - {{.Title}}</title>
+    <link>{{.Prefix}}{{.Link}}</link>
+    <description>{{.Description}}</description>
+    <language>en-us</language>
+    <ttl>40</ttl>
+{{template "rssItems" .Items}}
+  </channel>
+</rss>
+{{end -}}
+
+{{define "searchRss" -}}
+{{template "rssHeader"}}  <channel>
+    <atom:link href="{{.Link}}" rel="self" type="application/rss+xml" />
+    <title>Search results for "{{.Title}}"</title>
+    <link>{{.Link}}</link>
+    <description>{{.Description}}</description>
+    <language>en-us</language>
+    <ttl>40</ttl>
+{{template "rssItems" .Items}}
+  </channel>
+</rss>
+{{end -}}
