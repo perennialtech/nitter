@@ -57,7 +57,7 @@ Twitter, and in most cases serves pages faster (eg. timelines load 2-4x faster).
 
 ### Dependencies
 
-- Go 1.26 or newer, see [go.dev/doc/install](https://go.dev/doc/install)
+- Go 1.27 or newer, see [go.dev/doc/install](https://go.dev/doc/install)
 - sassc, to compile the stylesheets (`sassc` on most distros)
 - make
 
