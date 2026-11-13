@@ -1,0 +1,16 @@
+# The session tools. Run one with uv from the repository root, e.g.
+#   uv run --project tools tools/create_session_browser.py <username> <password>
+[project]
+name = "nitter-tools"
+version = "0.0.0"
+requires-python = ">=3.14"
+dependencies = [
+    "cloudscraper",
+    "curl_cffi",
+    "pyotp",
+    "requests",
+    "zendriver>=0.15.0",
+]
+
+[tool.uv]
+package = false

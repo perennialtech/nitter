@@ -10,3 +10,4 @@ guest_accounts.json*
 sessions.json*
 *.bak
 /tools/*.json*
+.venv/

@@ -1,6 +1,0 @@
-# Direct dependencies of the session tools. requirements.txt pins them and
-# everything they pull in by hash; regenerate it after editing this file:
-#   uv pip compile requirements.in --universal --python-version 3.14 --generate-hashes -o requirements.txt
-zendriver>=0.15.0
-pyotp
-curl_cffi

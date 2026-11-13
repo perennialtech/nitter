@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 Requirements:
-  pip install -r tools/requirements.txt
+  uv (https://docs.astral.sh/uv/)
 
 Usage:
-  python3 tools/create_sessions_browser.py <accounts_file> [--append sessions.jsonl] [--headless] [--delay]
+  uv run --project tools tools/create_sessions_browser.py <accounts_file> [--append sessions.jsonl] [--headless] [--delay]
 
 Examples:
   # Output to terminal
-  python3 tools/create_sessions_browser.py <accounts_file>
+  uv run --project tools tools/create_sessions_browser.py <accounts_file>
 
   # Append to sessions.jsonl
-  python3 tools/create_sessions_browser.py <accounts_file> --append sessions.jsonl
+  uv run --project tools tools/create_sessions_browser.py <accounts_file> --append sessions.jsonl
 
   # Add 5 second delay between sessions (default: 3)
-  python3 tools/create_sessions_browser.py <accounts_file> --delay 5
+  uv run --project tools tools/create_sessions_browser.py <accounts_file> --delay 5
 
   # Headless mode (may increase detection risk)
-  python3 tools/create_sessions_browser.py <accounts_file> --headless
+  uv run --project tools tools/create_sessions_browser.py <accounts_file> --headless
 
 Input (accounts_file):
   [{"username": "user", "password": "pass", "totp": "totp_secret"}, {...}, ...]

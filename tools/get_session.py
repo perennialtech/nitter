@@ -5,8 +5,8 @@ import sys
 import pyotp
 import cloudscraper
 
-# NOTE: pyotp, requests and cloudscraper are dependencies
-# > pip install pyotp requests cloudscraper
+# Run with uv from the repository root:
+# > uv run --project tools tools/get_session.py <username> <password> <2fa secret> <path>
 
 TW_CONSUMER_KEY = '3nVuSoBZnx6U4vzUxf5w'
 TW_CONSUMER_SECRET = 'Bcs59EFbbsdF6Sl9Ng71smgStWEGwXXKSjYvPVt7qys'

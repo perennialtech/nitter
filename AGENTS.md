@@ -42,7 +42,7 @@ The Python tests in `tests/` run against a built binary, as CI does:
 - `test_api_resource_cleanup.py` starts its own `./nitter` against a fake
   API.
 - The rest are seleniumbase integration tests against live Twitter and need
-  working sessions. Run them with `poetry run pytest` from `tests/` while
+  working sessions. Run them with `uv run pytest` from `tests/` while
   `./nitter` serves `localhost:8080`.
 
 `go run ./cmd/test-sessions sessions.jsonl` checks each cookie session in a
@@ -56,9 +56,9 @@ reference, with its release in a comment next to it:
 - GitHub Actions by commit SHA (`uses: actions/checkout@<sha> # v6.1.0`).
 - The Dockerfile's builder image by digest
   (`golang:1.27.4-alpine3.24@sha256:...`). `scratch` has no digest.
-- Go modules by `go.sum`, the test dependencies by `tests/poetry.lock`, and
-  the session tools by the hashes in `tools/requirements.txt`, compiled from
-  `tools/requirements.in` (the command is in that file).
+- Go modules by `go.sum`, and the Python dependencies of the tests and the
+  session tools by `tests/uv.lock` and `tools/uv.lock`. After editing a
+  `pyproject.toml`, run `uv lock` in its directory.
 
 To update a pin, change the SHA or digest and its comment together. Resolve
 a tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (dereference
