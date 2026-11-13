@@ -1,0 +1,77 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "earlier" -}}
+<div class="timeline-item more-replies earlier-replies"><a class="more-replies-text" href="{{url .}}">earlier replies</a></div>
+{{- end}}
+
+{{- define "moreReplies" -}}
+<div class="timeline-item more-replies">
+  {{- if .}}<a class="more-replies-text" href="{{url .}}">more replies</a>
+  {{- else}}<a class="more-replies-text">more replies</a>{{end -}}
+</div>
+{{- end}}
+
+{{- define "replyThread" -}}
+<div class="reply thread thread-line">
+  {{- range .}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "replySort" -}}
+<div class="reply-sort">
+  <span class="reply-sort-label">Sort replies:</span>
+  {{- range .}}
+  <a class="{{.Class}}" href="{{url .Href}}">{{.Label}}</a>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "replies" -}}
+<div class="replies" id="r">
+  {{- range .}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "searchReplies" -}}
+<div class="timeline-item more-replies"><a class="more-replies-text" href="{{url .}}">Show more replies</a></div>
+{{- end}}
+
+{{- define "related" -}}
+<div class="related-tweets">
+  <div class="related-header">Related tweets</div>
+  {{- range .}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "conversation" -}}
+<div class="conversation">
+  <div class="main-thread">
+    {{- with .Before}}
+    <div class="before-tweet thread-line">
+      {{- range .}}{{.}}{{end -}}
+    </div>
+    {{- end}}
+    <div class="main-tweet" id="m">{{.Main}}</div>
+    {{- with .After}}
+    <div class="after-tweet thread-line">
+      {{- range .}}{{.}}{{end -}}
+    </div>
+    {{- end}}
+  </div>
+  {{- range .Rest}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "editHistory" -}}
+<div class="edit-history">
+  <div class="latest-edit">
+    <div class="edit-history-header">Latest post</div>
+    {{- .Latest -}}
+  </div>
+  <div class="previous-edits">
+    <div class="edit-history-header">Version history</div>
+    {{- range .History}}
+    <div class="tweet-edit">{{.}}</div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}

@@ -1,0 +1,53 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "birdwatchNote" -}}
+<div class="{{.Class}}">
+  <div class="community-note-header">
+    {{- icon "group"}}<span>{{.Label}}</span>
+    {{- with .ID}}
+    <a class="community-note-permalink" href="/i/birdwatch/n/{{.}}" title="Permalink to this note">{{icon "link"}}</a>
+    {{- end}}
+  </div>
+  {{- .Trans}}
+  <div class="community-note-text" dir="auto">{{.Text}}</div>
+  <div class="community-note-meta-sep"></div>
+  <div class="community-note-meta">
+    {{- range .Meta}}{{.}}{{end -}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "noteAuthor" -}}
+<span class="community-note-meta-item community-note-author">By <a href="/i/communitynotes/u/{{.}}">{{.}}</a></span>
+{{- end}}
+
+{{- define "noteTweet" -}}
+<span class="community-note-meta-item community-note-author">On <a href="{{url .Href}}">{{.Text}}</a></span>
+{{- end}}
+
+{{- define "noteDate" -}}
+<span class="community-note-meta-item community-note-date">{{.}}</span>
+{{- end}}
+
+{{- define "birdwatchHistoryContent" -}}
+<div class="birdwatch-notes-list timeline">
+  {{- with .None}}
+  <div class="timeline-none">{{.}}</div>
+  {{- end}}
+  {{- range .Notes}}{{.}}{{end}}
+  {{- with .More}}
+  <div class="show-more"><a href="{{url .}}">Load more</a></div>
+  {{- end -}}
+</div>
+{{- end}}
+
+{{- define "birdwatchList" -}}
+<div class="birdwatch-notes-list">
+  {{- range .}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "birdwatchContainer" -}}
+<div class="timeline-container birdwatch-notes">
+  {{- range .Parts}}{{.}}{{end -}}
+</div>
+{{- end}}

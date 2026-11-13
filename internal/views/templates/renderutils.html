@@ -1,0 +1,80 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "icon" -}}
+<div class="icon-container">
+  {{- if .Href}}<a class="{{.Class}}" title="{{.Title}}" href="{{url .Href}}"></a>
+  {{- else}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end -}}
+  {{with .Label}} {{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "verifiedIcon" -}}
+<div class="verified-icon {{.}}">
+  {{- icon "circle" "class" "verified-icon-circle" "title" (print "Verified " . " account") -}}
+  {{- icon "ok" "class" "verified-icon-check" "title" (print "Verified " . " account") -}}
+</div>
+{{- end}}
+
+{{- define "profileLabel" -}}
+<div class="profile-label">{{icon "theater" "label" .}}</div>
+{{- end}}
+
+{{- define "linkUser" -}}
+<a href="{{url .Href}}"{{with .Class}} class="{{.}}"{{end}} title="{{.Text}}">{{.Text}}
+  {{- if .Lock}} {{icon "lock" "title" "Protected account"}}{{end -}}
+</a>
+{{- end}}
+
+{{- define "hiddenField" -}}
+<input name="{{.Name}}" style="display: none;" value="{{.Value}}">
+{{- end}}
+
+{{- define "buttonReferer" -}}
+<form method="{{.Method}}" action="{{url .Action}}"{{with .Class}} class="{{.}}"{{end}}>
+  {{- hiddenField "referer" .Path -}}
+  <button type="submit">{{.Text}}</button>
+</form>
+{{- end}}
+
+{{- define "genCheckbox" -}}
+<label class="pref-group checkbox-container" title="{{.Pref}}">{{.Label -}}
+  <input name="{{.Pref}}" type="checkbox"{{if .Checked}} checked=""{{end}}>
+  {{- /* */ -}}
+  <span class="checkbox"></span>
+</label>
+{{- end}}
+
+{{- define "genInput" -}}
+<div class="pref-group pref-input {{.Class}}" title="{{.Pref}}">
+  {{- with .Label}}<label for="{{$.Pref}}">{{.}}</label>{{end -}}
+  <input name="{{.Pref}}" type="text" placeholder="{{.Placeholder}}" value="{{.State}}"{{if .Autofocus}} autofocus=""{{end}}>
+</div>
+{{- end}}
+
+{{- define "genSelect" -}}
+<div class="pref-group pref-input" title="{{.Pref}}">
+  <label for="{{.Pref}}">{{.Label}}</label>
+  <select name="{{.Pref}}">
+    {{- range .Options}}
+    <option value="{{.}}"{{if eq . $.State}} selected=""{{end}}>{{.}}</option>
+    {{- end}}
+  </select>
+</div>
+{{- end}}
+
+{{- define "genDate" -}}
+<span class="date-input">
+  <input name="{{.Pref}}" type="date" value="{{.State}}">
+  {{- icon "calendar" -}}
+</span>
+{{- end}}
+
+{{- define "genNumberInput" -}}
+<div class="pref-group pref-input {{.Class}}">
+  {{- with .Label}}<label for="{{$.Pref}}">{{.}}</label>{{end -}}
+  <input name="{{.Pref}}" type="number" placeholder="{{.Placeholder}}" value="{{.State}}"{{if .Autofocus}} autofocus=""{{end}} min="{{.Min}}" step="1">
+</div>
+{{- end}}
+
+{{- define "genImg" -}}
+<img src="{{url .Src}}"{{with .Class}} class="{{.}}"{{end}} alt="{{.Alt}}" loading="lazy">
+{{- end}}

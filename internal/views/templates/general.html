@@ -1,0 +1,89 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "navbar" -}}
+<nav>
+  <div class="inner-nav">
+    <div class="nav-item"><a class="site-name" href="/">{{.Title}}</a></div>
+    <a href="/"><img class="site-logo" src="/logo.png" alt="Logo"></a>
+    <div class="nav-item right">
+      {{- icon "search" "title" "Search" "href" "/search"}}
+      {{- if .ShowNotes}}{{icon "group" "title" "Community Notes" "href" "/i/communitynotes"}}{{end}}
+      {{- with .RSS}}{{icon "rss" "title" "RSS Feed" "href" .}}{{end}}
+      {{- icon "bird" "title" "Open in X" "href" .Canonical}}
+      <a href="https://liberapay.com/zedeus">{{.LP}}</a>
+      {{- icon "info" "title" "About" "href" "/about"}}
+      {{- icon "cog" "title" "Preferences" "href" .SettingsURL}}
+    </div>
+  </div>
+</nav>
+{{- end}}
+
+{{- define "head" -}}
+<head>
+  <link rel="stylesheet" type="text/css" href="/css/style.css?v=106">
+  <link rel="stylesheet" type="text/css" href="/css/fontello.css?v=7">
+  {{- with .Theme}}
+  <link rel="stylesheet" type="text/css" href="{{url .}}">
+  {{- end}}
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#ff6c60">
+  <link rel="search" type="application/opensearchdescription+xml" title="{{.SiteTitle}}" href="{{url .OpensearchURL}}">
+  {{- with .Alternate}}
+  <link rel="alternate" href="{{url .}}" title="View on X">
+  {{- end}}
+  {{- with .RSS}}
+  <link rel="alternate" type="application/rss+xml" href="{{url .}}" title="RSS feed">
+  {{- end}}
+  {{- with .Oembed}}
+  <link rel="alternate" type="application/json+oembed" href="{{url .}}" title="{{$.OembedTitle}}">
+  {{- end}}
+  {{- if .HLS}}
+  <script src="/js/hls.min.js" defer=""></script>
+  <script src="/js/hlsPlayback.js?v=1" defer=""></script>
+  {{- end}}
+  {{- if .InfiniteScroll}}
+  <script src="/js/infiniteScroll.js" defer=""></script>
+  {{- end}}
+  <title>{{.Title}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="same-origin">
+  <meta name="theme-color" content="#1F1F1F">
+  <meta property="og:type" content="{{.OgType}}">
+  <meta property="og:title" content="{{.OgTitle}}">
+  <meta property="og:description" content="{{.Desc}}">
+  <meta property="og:site_name" content="Nitter">
+  <meta property="og:locale" content="en_US">
+  {{- with .BannerURL}}
+  <link rel="preload" type="image/png" href="{{url .}}" as="image">
+  {{- end}}
+  {{- range .Images}}
+  <link rel="preload" type="image/png" href="{{url .Preload}}" as="image">
+  <meta property="og:image" content="{{.Image}}">
+  <meta property="twitter:image:src" content="{{.Image}}">
+  <meta property="twitter:card" content="{{$.TwitterCard}}">
+  {{- end}}
+  {{- with .Video}}
+  <meta property="og:video:url" content="{{.}}">
+  <meta property="og:video:secure_url" content="{{.}}">
+  <meta property="og:video:type" content="text/html">
+  {{- end}}
+  <link rel="preload" type="font/woff2" as="font" href="/fonts/fontello.woff2?59696369" crossorigin="anonymous">
+</head>
+{{- end}}
+
+{{- define "main" -}}
+<!DOCTYPE html>
+<html lang="en">
+{{.Head}}
+<body{{with .BodyClass}} class="{{.}}"{{end}}>
+{{.Navbar}}
+<div class="container">{{.Body}}</div>
+</body>
+</html>
+{{- end}}
+
+{{- define "error" -}}
+<div class="panel-container"><div class="error-panel"><span>{{.}}</span></div></div>
+{{- end}}

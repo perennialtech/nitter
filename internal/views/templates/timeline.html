@@ -1,0 +1,106 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "toTop" -}}
+<div class="top-ref">{{icon "down" "href" .}}</div>
+{{- end}}
+
+{{- define "newer" -}}
+<div class="timeline-item show-more"><a href="{{url .}}">Load newest</a></div>
+{{- end}}
+
+{{- define "more" -}}
+<div class="show-more"><a href="{{url .}}">Load more</a></div>
+{{- end}}
+
+{{- define "noMore" -}}
+<div class="timeline-footer"><h2 class="timeline-end">No more items</h2></div>
+{{- end}}
+
+{{- define "noneFound" -}}
+<div class="timeline-header"><h2 class="timeline-none">No items found</h2></div>
+{{- end}}
+
+{{- define "moreRepliesThread" -}}
+<div class="timeline-item thread more-replies-thread">
+  <div class="more-replies"><a class="more-replies-text" href="{{url .}}">more replies</a></div>
+</div>
+{{- end}}
+
+{{- define "thread" -}}
+<div class="thread-line">
+  {{- range .}}{{.}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "user" -}}
+<div class="timeline-item" data-username="{{.U.Username}}">
+  <a class="tweet-link" href="/{{.U.Username}}"></a>
+  <div class="tweet-body profile-result">
+    <div class="tweet-header">
+      <a class="tweet-avatar" href="/{{.U.Username}}">{{genImg (userPic .U.UserPic "_bigger") .AvatarClass}}</a>
+      <div class="tweet-name-row">
+        <div class="fullname-and-username">{{linkUser .U "fullname"}}{{verifiedIcon .U}}</div>
+      </div>
+      {{- linkUser .U "username"}}
+      {{- profileLabel .U}}
+    </div>
+    <div class="tweet-content media-body" dir="auto">{{.Bio}}</div>
+  </div>
+</div>
+{{- end}}
+
+{{- define "timelineResults" -}}
+<div class="timeline">
+  {{- .Newer}}
+  {{- range .Items}}{{.}}{{end}}
+  {{- .More}}
+  {{- .ToTop}}
+  {{- .Footer -}}
+</div>
+{{- end}}
+
+{{- define "listCard" -}}
+<div class="timeline-item list-result">
+  <a class="tweet-link" href="{{url .URL}}"></a>
+  <a class="list-result-banner" href="{{url .URL}}">{{with .R.List.Banner}}{{genImg .}}{{end}}</a>
+  <div class="list-result-body">
+    <div class="list-result-title fullname-and-username">
+      <a class="list-name fullname" href="{{url .URL}}">{{.R.List.Name}}</a>
+      <span class="list-members">{{.Members}}</span>
+    </div>
+    <div class="list-result-context">
+      {{- if .R.FollowersContext}}
+      {{- range .Facepiles}}
+      {{- if .Href}}<a class="facepile-link" href="{{url .Href}}">{{genImg .Pic "list-facepile"}}</a>
+      {{- else}}{{genImg .Pic "list-facepile"}}{{end}}
+      {{- end}}
+      <span>{{range $i, $w := .Words}}{{if $i}} {{end}}{{if $w.Username}}<a href="/{{$w.Username}}">{{$w.Word}}</a>{{else}}{{$w.Word}}{{end}}{{end}}</span>
+      {{- else}}
+      {{- if .R.Owner.Username}}<a class="facepile-link" href="/{{.R.Owner.Username}}">{{genImg .OwnerPic "list-facepile"}}</a>
+      {{- else}}{{genImg .OwnerPic "list-facepile"}}{{end}}
+      {{- linkUser .R.Owner "fullname"}}
+      {{- linkUser .R.Owner "username"}}
+      {{- end}}
+    </div>
+    {{- with .R.List.Description}}
+    <div class="list-result-description">{{.}}</div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "timelineTweets" -}}
+<div class="{{.Class}}">
+  {{- .Newer}}
+  {{- .Pinned}}
+  {{- .Footer}}
+  {{- if .Gallery}}
+  <div class="{{.Gallery}}" data-col-size="{{.ColSize}}">
+    {{- range .Items}}{{.}}{{end -}}
+  </div>
+  {{- else}}
+  {{- range .Items}}{{.}}{{end}}
+  {{- end}}
+  {{- .More}}
+  {{- .ToTop -}}
+</div>
+{{- end}}

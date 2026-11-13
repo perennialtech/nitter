@@ -1,0 +1,135 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "broadcast" -}}
+<div class="broadcast-page">
+  <div class="broadcast-panel">
+    <div class="broadcast-player">
+      {{- if and .BC.M3u8URL .P.HlsPlayback}}
+      <video poster="{{url .Thumb}}" data-url="{{url .Source}}" data-autoload="false" data-start="{{.Start}}"{{if .P.MuteVideos}} muted=""{{end}}></video>
+      <div class="video-overlay" onclick="playVideo(this)">
+        <div class="overlay-circle"><span class="overlay-triangle"></span></div>
+        {{- if .Live}}
+        <div class="broadcast-live">LIVE</div>
+        {{- else if .Duration}}
+        <div class="overlay-duration">{{.Duration}}</div>
+        {{- end}}
+      </div>
+      {{- else if .BC.M3u8URL}}
+      <img src="{{url .Thumb}}" alt="{{.BC.Title}}">
+      <div class="video-overlay">
+        {{- .EnableHLS}}
+        {{- if .Live}}
+        <div class="broadcast-live">LIVE</div>
+        {{- else if .Duration}}
+        <div class="overlay-duration">{{.Duration}}</div>
+        {{- end}}
+      </div>
+      {{- else if .BC.Thumb}}
+      <img src="{{url .Thumb}}" alt="{{.BC.Title}}">
+      <div class="video-overlay">
+        {{- if .BC.AvailableForReplay}}<p>Stream unavailable</p>{{else}}<p>Replay is not available</p>{{end -}}
+      </div>
+      {{- else}}
+      <div class="video-overlay"><p>Broadcast not found</p></div>
+      {{- end}}
+    </div>
+    <div class="broadcast-info">
+      <h2 class="broadcast-title">{{.BC.Title}}</h2>
+      <div class="broadcast-user-row">
+        <a class="broadcast-user" href="/{{.BC.User.Username}}">
+          {{- genImg .Avatar}}
+          <div>
+            <div><strong>{{.BC.User.Fullname}}</strong>{{verifiedIcon .BC.User}}</div>
+            <span class="broadcast-username">@{{.BC.User.Username}}</span>
+          </div>
+        </a>
+        <div class="broadcast-meta">
+          {{- with .Views}}
+          <span>{{.}}</span>
+          {{- end}}
+          {{- if .Live}}
+          <span class="broadcast-live">{{.State}}</span>
+          {{- else}}
+          <span>{{.State}}</span>
+          {{- end}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{- end}}
+
+{{- define "participant" -}}
+<div class="space-participant">
+  <a href="/{{.P.Username}}">
+    {{- genImg (participantAvatar .P.AvatarURL)}}
+    <div class="participant-info">
+      <div class="participant-name">
+        <strong>{{.P.DisplayName}}</strong>
+        {{- if .P.IsVerified}}
+        <div class="verified-icon blue">
+          {{- icon "circle" "class" "verified-icon-circle" "title" "Verified account"}}
+          {{- icon "ok" "class" "verified-icon-check" "title" "Verified account" -}}
+        </div>
+        {{- end}}
+        {{- with .Role}}
+        <span class="host-badge">{{.}}</span>
+        {{- end}}
+      </div>
+      <span class="participant-username">@{{.P.Username}}</span>
+    </div>
+  </a>
+</div>
+{{- end}}
+
+{{- define "space" -}}
+<div class="space-page">
+  <div class="space-panel">
+    <div class="space-player">
+      {{- if and .SP.M3u8URL .P.HlsPlayback}}
+      <audio data-url="{{url .Source}}" data-autoload="false"></audio>
+      <div class="video-overlay" onclick="playAudio(this)">
+        <div class="overlay-circle"><span class="overlay-triangle"></span></div>
+        {{- if .Live}}
+        <div class="space-live">LIVE</div>
+        {{- else if .Duration}}
+        <div class="overlay-duration">{{.Duration}}</div>
+        {{- end}}
+      </div>
+      {{- else if .SP.M3u8URL}}
+      <div class="video-overlay">
+        {{- .EnableHLS}}
+        {{- if .Live}}
+        <div class="space-live">LIVE</div>
+        {{- else if .Duration}}
+        <div class="overlay-duration">{{.Duration}}</div>
+        {{- end}}
+      </div>
+      {{- else if .SP.AvailableForReplay}}
+      <div class="video-overlay"><p>Audio stream unavailable</p></div>
+      {{- else}}
+      <div class="video-overlay"><p>Replay is not available</p></div>
+      {{- end}}
+    </div>
+    <div class="space-info">
+      <div class="space-header">
+        <h2 class="space-title">{{.SP.Title}}</h2>
+        <div class="space-meta">
+          {{- with .Listeners}}
+          <span class="listener-count">{{.}}</span>
+          {{- end}}
+          {{- if .Live}}
+          <span class="space-live">{{.State}}</span>
+          {{- else}}
+          <span class="space-state">{{.State}}</span>
+          {{- end}}
+        </div>
+      </div>
+      {{- with .Participants}}
+      <div class="space-participants">
+        {{- range .}}{{template "participant" .}}{{end -}}
+      </div>
+      {{- end}}
+    </div>
+  </div>
+</div>
+{{- end}}

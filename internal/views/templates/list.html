@@ -1,0 +1,96 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "list" -}}
+<div class="timeline-container">
+  {{- if .L.Banner}}
+  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank">{{genImg .L.Banner}}</a></div>
+  {{- end}}
+  <div class="timeline-header">{{.Header}}
+    <div class="timeline-description">{{.L.Description}}</div>
+  </div>
+  {{- .Tabs}}
+  {{- .Body -}}
+</div>
+{{- end}}
+
+{{- define "communityTabs" -}}
+<div>
+  {{- .Tabs}}
+  {{- with .Tags}}
+  <div class="community-tags">
+    {{- range .}}
+    <a class="community-tag" href="{{url .Href}}">{{.Tag}}</a>
+    {{- end}}
+  </div>
+  {{- end -}}
+</div>
+{{- end}}
+
+{{- define "hashtagHeader" -}}
+<div class="community-hashtag-header"><h2 class="community-hashtag-title">{{.}}</h2></div>
+{{- end}}
+
+{{- define "communityAbout" -}}
+<div class="community-about">
+  <div class="community-info">
+    <h2>Community Info</h2>
+    <div class="community-info-item">{{icon "group"}}
+      {{- if eq .C.JoinPolicy "Open"}}Anyone can join this Community.{{else}}Membership is by approval only.{{end -}}
+    </div>
+    <div class="community-info-item">{{icon "info"}}All Communities are publicly visible.</div>
+    <div class="community-info-item">{{icon "calendar"}}
+      <span>{{.Created}}<a href="/{{.C.Creator.Username}}">@{{.C.Creator.Username}}</a>{{verifiedIcon .C.Creator}}</span>
+    </div>
+  </div>
+  {{- with .C.Rules}}
+  <div class="community-rules">
+    <h2>Rules</h2>
+    <p class="community-rules-intro">These are set and enforced by Community admins and are in addition to <a href="https://help.x.com/rules-and-policies/x-rules">X's rules</a>.</p>
+    {{- range $i, $r := .}}
+    <div class="community-rule">
+      <span class="community-rule-number">{{inc $i}}</span>
+      <div class="community-rule-content">
+        <strong>{{$r.Name}}</strong>
+        {{- with $r.Description}}
+        <p>{{.}}</p>
+        {{- end}}
+      </div>
+    </div>
+    {{- end}}
+  </div>
+  {{- end}}
+  {{- with .Moderators}}
+  <div class="community-moderators">
+    <h2>Moderators<a class="community-mods-link" href="{{url $.Path}}/moderators">See all</a></h2>
+    {{- range .}}
+    <div class="community-moderator">
+      <a href="/{{.Username}}">{{genImg (userPic .UserPic "_bigger") "community-mod-avatar"}}</a>
+      <div class="community-mod-info">
+        <a href="/{{.Username}}" class="community-mod-name">{{.Fullname}}{{verifiedIcon .}}</a>
+        <a href="/{{.Username}}" class="community-mod-username">@{{.Username}}</a>
+      </div>
+    </div>
+    {{- end}}
+  </div>
+  {{- end -}}
+</div>
+{{- end}}
+
+{{- define "community" -}}
+<div class="timeline-container">
+  {{- if .C.Banner}}
+  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank">{{genImg .C.Banner}}</a></div>
+  {{- end}}
+  <div class="community-header">
+    <h1 class="community-name"><a href="{{url .Path}}">{{.C.Name}}</a></h1>
+    {{- with .C.Category}}
+    <span class="community-category">{{.}}</span>
+    {{- end}}
+    {{- with .C.Description}}
+    <div class="community-description">{{.}}</div>
+    {{- end}}
+    <div class="community-stats"><a class="community-member-count" href="{{url .Path}}/members">{{.Members}} Members</a></div>
+  </div>
+  {{- .Nav}}
+  {{- .Body -}}
+</div>
+{{- end}}

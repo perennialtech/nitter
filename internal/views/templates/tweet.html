@@ -1,0 +1,327 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "articleCard" -}}
+<div class="article-card card large">
+  <a class="card-container" href="{{url .URL}}">
+    {{- with .A.CoverImage}}
+    <div class="card-image-container">
+      <div class="card-image">{{genImg .}}</div>
+      <span class="article-card-badge">Article</span>
+    </div>
+    {{- end}}
+    <div class="card-content-container">
+      <div class="card-content">
+        <h2 class="card-title">{{.A.Title}}</h2>
+        {{- with .A.PreviewText}}
+        <p class="card-description">{{.}}</p>
+        {{- end}}
+      </div>
+    </div>
+  </a>
+</div>
+{{- end}}
+
+{{- define "tweetHeader" -}}
+<div>
+  {{- if .Pinned}}
+  <div class="pinned"><span>{{icon "pin" "label" .PinnedLabel}}</span></div>
+  {{- else if .Retweet}}
+  <div class="retweet-header">
+    <a href="/{{.Retweeter}}">{{icon "retweet" "label" (print .Retweet " retweeted")}}</a>
+    {{- if showRetweetTime}}
+    <span class="tweet-date retweet-date"><span class="retweet-date-sep"> · </span><a href="{{url (tweetLink .Full true)}}" title="{{time .Full.Time}}">{{shortTime .Full.Time}}</a></span>
+    {{- end}}
+  </div>
+  {{- end}}
+  <div class="tweet-header">
+    <a class="tweet-avatar" href="/{{.T.User.Username}}">{{genImg (userPic .T.User.UserPic .AvatarSize) .AvatarClass}}</a>
+    <div class="tweet-name-row">
+      <div class="fullname-and-username">
+        {{- linkUser .T.User "fullname"}}{{verifiedIcon .T.User}}{{linkUser .T.User "username" -}}
+      </div>
+      <span class="tweet-date"><a href="{{url (tweetLink .T true)}}" title="{{time .T.Time}}">{{shortTime .T.Time}}</a></span>
+    </div>
+    {{- profileLabel .T.User}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "altText" -}}
+<p class="alt-text">ALT  {{.}}</p>
+{{- end}}
+
+{{- define "photoAttachment" -}}
+<div class="attachment">
+  <a href="{{url .Orig}}" class="still-image" target="_blank">{{genImg .Thumb "" .Alt}}</a>
+  {{- with .Alt}}{{template "altText" .}}{{end}}
+</div>
+{{- end}}
+
+{{- define "videoOverlay" -}}
+<div class="video-overlay">{{.}}</div>
+{{- end}}
+
+{{- define "videoUnavailable" -}}
+<div class="video-overlay"><p>{{.}}</p></div>
+{{- end}}
+
+{{- define "videoAttachment" -}}
+<div class="attachment">
+  {{- if not .Playable}}
+  <img src="{{url .Thumb}}" loading="lazy">
+  {{- .Overlay}}
+  {{- else if .MP4}}
+  <video poster="{{url .Thumb}}" controls=""{{if .Muted}} muted=""{{end}}><source src="{{url .Source}}" type="video/mp4"></video>
+  {{- else}}
+  <video poster="{{url .Thumb}}" data-url="{{url .Source}}" data-autoload="false"{{if .Muted}} muted=""{{end}}></video>
+  <div class="video-overlay" onclick="playVideo(this)">
+    <div class="overlay-circle"><span class="overlay-triangle"></span></div>
+    {{- with .Duration}}
+    <div class="overlay-duration">{{.}}</div>
+    {{- end}}
+  </div>
+  {{- end}}
+  {{- with .DownloadURL}}
+  <a class="video-download" href="{{url .}}" download="" title="Download video">{{icon "download-alt"}}</a>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "video" -}}
+<div class="attachments card">
+  <div class="gallery-video{{if .HasCard}} card-container{{end}}">
+    {{- .Attachment}}
+    {{- if .HasCard}}
+    <div class="card-content">
+      <h2 class="card-title">{{.V.Title}}</h2>
+      {{- with .V.Description}}
+      <p class="card-description">{{.}}</p>
+      {{- end}}
+    </div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "gifAttachment" -}}
+<div class="attachment">
+  {{- if .Disabled}}
+  <img src="{{url .Thumb}}" loading="lazy">
+  {{- .Disabled}}
+  {{- else if .P.AutoplayGifs}}
+  <video class="gif" poster="{{url .Thumb}}" autoplay="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
+  {{- else}}
+  <video class="gif" poster="{{url .Thumb}}" controls="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
+  {{- end}}
+  {{- with .G.AltText}}{{template "altText" .}}{{end}}
+</div>
+{{- end}}
+
+{{- define "gif" -}}
+<div class="attachments media-gif">{{.}}</div>
+{{- end}}
+
+{{- define "media" -}}
+<div class="attachments">
+  {{- range .}}
+  <div class="{{.Class}}"{{with .Style}} style="{{.}}"{{end}}>
+    {{- range .Items}}{{.}}{{end -}}
+  </div>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "poll" -}}
+<div class="poll">
+  {{- range .Options}}
+  <div class="poll-meter{{.Leader}}">
+    <span class="poll-choice-bar" style="{{.Width}}"></span>
+    <span class="poll-choice-value">{{.Perc}}</span>
+    <span class="poll-choice-option">{{.Option}}</span>
+  </div>
+  {{- end}}
+  <span class="poll-info">{{.Info}}</span>
+</div>
+{{- end}}
+
+{{- define "cardImage" -}}
+<div class="card-image-container">
+  <div class="card-image">
+    {{- genImg .Image}}
+    {{- if eq .Kind "player"}}
+    <div class="card-overlay"><div class="overlay-circle"><span class="overlay-triangle"></span></div></div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
+
+{{- define "cardContent" -}}
+<div class="card-content">
+  <h2 class="card-title">{{.Title}}</h2>
+  {{- with .Text}}
+  <p class="card-description">{{.}}</p>
+  {{- end}}
+  {{- with .Dest}}
+  <span class="card-destination">{{.}}</span>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "card" -}}
+<div class="card{{.Large}}">
+  {{- if .C.Video}}
+  <div class="card-container">
+    {{- .Video}}
+    <a class="card-content-container" href="{{url .URL}}">{{template "cardContent" .C}}</a>
+  </div>
+  {{- else}}
+  <a class="card-container" href="{{url .URL}}">
+    {{- if .C.Image}}{{template "cardImage" .C}}{{end}}
+    <div class="card-content-container">{{template "cardContent" .C}}</div>
+  </a>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "stats" -}}
+<div class="tweet-stats">
+  <span class="tweet-stat">{{icon "comment" "label" .Replies}}</span>
+  <a href="{{url .RetweetsURL}}" class="tweet-stat" title="Retweets">{{icon "retweet" "label" .Retweets}}</a>
+  <a href="{{url .QuotesURL}}" class="tweet-stat" title="Quote Tweets">{{icon "quote" "label" .Quotes}}</a>
+  <span class="tweet-stat">{{icon "heart" "label" .Likes}}</span>
+  <span class="tweet-stat">{{icon "views" "label" .Views}}</span>
+  {{- if .Birdwatch}}
+  <a href="{{url .BirdwatchURL}}" class="tweet-stat" title="Community Notes">{{icon "group"}}</a>
+  {{- end}}
+  {{- if .ShowSource}}
+  <span class="tweet-stat source">{{.Source}}</span>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "reply" -}}
+<div class="replying-to">Replying to {{range $i, $u := .}}{{if $i}} {{end}}<a href="/{{$u}}">@{{$u}}</a>{{end}}</div>
+{{- end}}
+
+{{- define "attribution" -}}
+<a class="attribution" href="{{url .Href}}">{{.Avatar}}<strong>{{.User.Fullname}}</strong>{{verifiedIcon .User}}</a>
+{{- end}}
+
+{{- define "mediaTags" -}}
+<div class="media-tag-block">
+  {{- icon "user"}}
+  {{- range $i, $u := .}}<a class="media-tag" href="/{{$u.Username}}" title="{{$u.Username}}">{{$u.Fullname}}</a>{{if notLast $i (len $)}}, {{end}}{{end -}}
+</div>
+{{- end}}
+
+{{- define "translateLabel" -}}
+<div class="tweet-translate">
+  {{- if .Active -}}
+    {{- if .Target}}Translated to {{langName .Target}}
+    {{- else if .Lang}}Translated from {{langName .Lang}}
+    {{- else}}Translated{{end -}}
+    {{- with .URL}} · <a href="{{url (withTr . "0")}}">show original</a>{{end -}}
+  {{- else if .Requested}}Translation unavailable
+  {{- else}}<a href="{{url .URL}}">See translation</a>{{end -}}
+</div>
+{{- end}}
+
+{{- define "translateForm" -}}
+<form class="tweet-translate" method="post" action="{{url .Path}}">
+  <input type="hidden" name="sig" value="{{.Sig}}">
+  {{- with .Back}}
+  <input type="hidden" name="r" value="{{.}}">
+  {{- end}}
+  <button type="submit" title="{{.Title}}">Translate to {{.Lang}}</button>
+</form>
+{{- end}}
+
+{{- define "communityNote" -}}
+<div class="community-note">
+  <div class="community-note-header">{{icon "group"}}<span>Community note</span></div>
+  {{- .Trans}}
+  <div class="community-note-text" dir="auto">{{.Text}}</div>
+</div>
+{{- end}}
+
+{{- define "quoteUnavailable" -}}
+<div class="quote unavailable"><a class="unavailable-quote" href="{{url .Href}}">{{.Text}}</a></div>
+{{- end}}
+
+{{- define "quote" -}}
+<div class="quote quote-big">
+  <a class="quote-link" href="{{url .Link}}"></a>
+  <div class="tweet-name-row">
+    <div class="fullname-and-username">
+      {{- miniAvatar .Q.User .P}}{{linkUser .Q.User "fullname"}}{{verifiedIcon .Q.User}}{{linkUser .Q.User "username" -}}
+    </div>
+    <span class="tweet-date"><a href="{{url .Link}}" title="{{time .Q.Time}}">{{shortTime .Q.Time}}</a></span>
+  </div>
+  {{- profileLabel .Q.User}}
+  {{- if .Q.Reply}}{{reply .Q}}{{end}}
+  {{- .Trans}}
+  {{- if .Q.Text}}
+  <div class="quote-text" dir="auto">{{.Text}}</div>
+  {{- end}}
+  {{- with .Media}}
+  <div class="quote-media-container">{{.}}</div>
+  {{- end}}
+  {{- with .Q.ArticlePreview}}{{articleCard .}}{{end}}
+  {{- .Note}}
+  {{- if .Q.HasThread}}
+  <a class="show-thread" href="{{url .Link}}">Show this thread</a>
+  {{- end}}
+  {{- if .NewerVersion}}
+  <div class="quote-latest">There's a new version of this post</div>
+  {{- end}}
+</div>
+{{- end}}
+
+{{- define "disclosures" -}}
+<div class="disclosures">
+  {{- if .IsAI}}<span data-disclosure="ai">{{icon "attention-circled" "label" "Made with AI"}}</span>{{end}}
+  {{- if .IsAd}}<span data-disclosure="ad">{{icon "attention-circled" "label" "Paid partnership (ad)"}}</span>{{end -}}
+</div>
+{{- end}}
+
+{{- define "location" -}}
+<span class="tweet-geo"> – at {{if .URL}}<a href="{{url .URL}}">{{.Place}}</a>{{else}}{{.Place}}{{end}}</span>
+{{- end}}
+
+{{- define "tweetUnavailable" -}}
+<div class="{{.Class}}" data-username="{{.Username}}">
+  <a class="unavailable-box" href="{{url .Link}}">{{.Text}}</a>
+  {{- .Quote}}
+</div>
+{{- end}}
+
+{{- define "tweet" -}}
+<div class="{{.Class}}" data-username="{{.T.User.Username}}">
+  {{- if not .MainTweet}}
+  <a class="tweet-link" href="{{url .Link}}"></a>
+  {{- end}}
+  <div class="tweet-body">
+    {{- .Header}}
+    {{- .Reply}}
+    {{- .Trans}}
+    <div class="{{.TweetClass}}" dir="auto">{{.Text}}</div>
+    {{- .Attribution}}
+    {{- .Card}}
+    {{- .Article}}
+    {{- .Media}}
+    {{- .Poll}}
+    {{- .Quote}}
+    {{- .Note}}
+    {{- .Disclosures}}
+    {{- if .MainTweet}}
+    <p class="tweet-published">
+      {{- with .EditedLink}}<a href="{{url .}}">Last edited {{time $.T.Time}}</a>{{else}}{{time .T.Time}}{{end -}}
+    </p>
+    {{- with .LatestLink}}
+    <div class="latest-post-version">There's a new version of this post. <a href="{{url .}}">See the latest post</a></div>
+    {{- end}}
+    {{- end}}
+    {{- with .MediaTags}}{{template "mediaTags" .}}{{end}}
+    {{- .Stats}}
+  </div>
+</div>
+{{- end}}

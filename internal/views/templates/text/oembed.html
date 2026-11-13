@@ -1,0 +1,4 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "oembed" -}}
+<iframe src="{{.URL}}" style="width:100%;max-width:{{.MaxWidth}}px;height:250px;border:none" scrolling="no" loading="lazy" onload="let c=new MessageChannel;c.port1.onmessage=e=>this.style.height=e.data+'px';this.contentWindow.postMessage('','*',[c.port2])"></iframe>
+{{- end}}
