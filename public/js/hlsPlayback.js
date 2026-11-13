@@ -18,10 +18,11 @@ function playMedia(overlay, tagName) {
         });
     } else if (media.canPlayType('application/vnd.apple.mpegurl')) {
         media.src = url;
+        // canplay fires again after every seek; only the first one starts playback
         media.addEventListener('canplay', function() {
             if (startTime > 0) media.currentTime = startTime;
             media.play();
-        });
+        }, {once: true});
     }
 }
 
