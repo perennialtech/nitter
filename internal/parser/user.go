@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
 
@@ -62,113 +61,8 @@ func expVerifiedType(r gjson.Result) types.VerifiedType {
 	return parseEnum(str(r), verifiedTypes, types.VerifiedNone)
 }
 
-// expHashtag is a match of the experimental bio hashtag pattern
-// (*U)(^|[^\w-_.?])([#＃$])([\w_]*+)(?!</a>|">|#).
-type expHashtag struct {
-	prefix, hash, name string
-	end                int
-}
-
-// matchExpHashtag tries the pattern at byte offset i. RE2 has neither the
-// possessive quantifier nor the lookahead, so it's matched by hand: the name
-// takes every word character, and the match fails (without backtracking into
-// the name) if "</a>", `">` or "#" follows.
-func matchExpHashtag(s string, i int) (expHashtag, bool) {
-	try := func(at int) (expHashtag, bool) {
-		if at >= len(s) {
-			return expHashtag{}, false
-		}
-		r, size := utf8.DecodeRuneInString(s[at:])
-		if r != '#' && r != '＃' && r != '$' {
-			return expHashtag{}, false
-		}
-		j := at + size
-		k := j
-		for k < len(s) && isWordByte(s[k]) {
-			k++
-		}
-		if rest := s[k:]; strings.HasPrefix(rest, "</a>") || strings.HasPrefix(rest, `">`) ||
-			strings.HasPrefix(rest, "#") {
-			return expHashtag{}, false
-		}
-		return expHashtag{prefix: s[i:at], hash: s[at:j], name: s[j:k], end: k}, true
-	}
-
-	// The first alternative, ^, only applies at the start of the text.
-	if i == 0 {
-		if m, ok := try(0); ok {
-			return m, true
-		}
-	}
-	if i < len(s) {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		if !(r < utf8.RuneSelf && isWordByte(byte(r))) && r != '-' && r != '.' && r != '?' {
-			return try(i + size)
-		}
-	}
-	return expHashtag{}, false
-}
-
-// \w in PCRE without UCP is ASCII only, as in Go.
-func isWordByte(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
-}
-
-func expLinkHashtags(s string) string {
-	var b strings.Builder
-	last := 0
-	for i := 0; i < len(s); {
-		if m, ok := matchExpHashtag(s, i); ok {
-			b.WriteString(s[last:i])
-			b.WriteString(m.prefix + `<a href="/search?f=tweets&q=%23` + m.name + `">` + m.hash + m.name + "</a>")
-			last, i = m.end, m.end
-			continue
-		}
-		_, size := utf8.DecodeRuneInString(s[i:])
-		i += size
-	}
-	b.WriteString(s[last:])
-	return b.String()
-}
-
-// runeRange is runes[lo:hi], empty where Nim's slice would be empty or fail.
-func runeRange(runes []rune, lo, hi int) string {
-	lo, hi = max(lo, 0), min(hi, len(runes))
-	if lo >= hi {
-		return ""
-	}
-	return string(runes[lo:hi])
-}
-
-// replacedWithExp is the experimental slices.replacedWith. Unlike
-// parserutils' version it neither validates ranges nor escapes the URL, and
-// the experimental parsers only ever give it URL replacements.
-func replacedWithExp(runes []rune, repls []replaceSlice, start, end int) string {
-	lowerBound := func(i int) int {
-		if i > 0 {
-			return repls[i-1].b + 1
-		}
-		return start
-	}
-
-	var sb strings.Builder
-	for i, rep := range repls {
-		sb.WriteString(runeRange(runes, lowerBound(i), rep.a))
-		if rep.kind == rkURL {
-			sb.WriteString(`<a href="` + rep.url + `">` + rep.display + "</a>")
-		}
-	}
-
-	if restA, restB := lowerBound(len(repls)), end-1; restA <= restB {
-		sb.WriteString(runeRange(runes, restA, restB+1))
-	}
-	return sb.String()
-}
-
 // expandUserEntitiesExp is the experimental user parser's expandUserEntities.
 func expandUserEntitiesExp(user *types.User, ent gjson.Result) {
-	orig := []rune(user.Bio)
-
 	if urls := arr(jpath(ent, "url", "urls")); len(urls) > 0 {
 		user.Website = str(jfield(urls[0], "expandedUrl"))
 	}
@@ -181,11 +75,7 @@ func expandUserEntitiesExp(user *types.User, ent gjson.Result) {
 			a: getInt(idx(ind, 0)), b: getInt(idx(ind, 1)) - 1})
 	}
 
-	repls = deduplicate(repls)
-	sortSlices(repls)
-
-	bio := replacedWithExp(orig, repls, 0, len(orig))
-	user.Bio = expLinkHashtags(unRegex.ReplaceAllString(bio, unReplace))
+	user.Bio = expandBio(user.Bio, repls)
 }
 
 func expBanner(raw gjson.Result) string {

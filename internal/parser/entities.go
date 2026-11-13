@@ -122,6 +122,22 @@ func hashtagSlice(js gjson.Result) replaceSlice {
 // replacedWith renders runes[start:end] with the replacements applied as
 // links, skipping replacements whose range doesn't fit the text.
 func replacedWith(runes []rune, repls []replaceSlice, start, end int) string {
+	return replacedWithText(runes, repls, start, end, func(s string) string { return s })
+}
+
+// isLinkable reports whether url is a path or an http(s) URL.
+func isLinkable(url string) bool {
+	if strings.HasPrefix(url, "/") {
+		return true
+	}
+	scheme, _, ok := strings.Cut(url, ":")
+	scheme = strings.ToLower(scheme)
+	return ok && (scheme == "http" || scheme == "https")
+}
+
+// replacedWithText is replacedWith, passing the text outside the
+// replacements through text.
+func replacedWithText(runes []rune, repls []replaceSlice, start, end int, text func(string) string) string {
 	runeLen := len(runes)
 	safeStart := max(0, start)
 	safeEnd := min(runeLen, end)
@@ -144,7 +160,7 @@ func replacedWith(runes []rune, repls []replaceSlice, start, end int) string {
 	sb.Grow(runeLen)
 	for i, rep := range valid {
 		if lower := lowerBound(i); lower < rep.a {
-			sb.WriteString(string(runes[lower:rep.a]))
+			sb.WriteString(text(string(runes[lower:rep.a])))
 		}
 		switch rep.kind {
 		case rkHashtag:
@@ -158,13 +174,17 @@ func replacedWith(runes []rune, repls []replaceSlice, start, end int) string {
 			sb.WriteString(`<a href="` + xmlEscape(rep.url) + `" title="` + xmlEscape(rep.display) +
 				`">` + string(runes[rep.a:rep.b+1]) + "</a>")
 		case rkURL:
-			sb.WriteString(`<a href="` + xmlEscape(rep.url) + `">` + xmlEscape(rep.display) + "</a>")
+			if isLinkable(rep.url) {
+				sb.WriteString(`<a href="` + xmlEscape(rep.url) + `">` + xmlEscape(rep.display) + "</a>")
+			} else {
+				sb.WriteString(xmlEscape(rep.display))
+			}
 		}
 	}
 
 	restA, restB := lowerBound(len(valid)), safeEnd-1
 	if restA >= 0 && restA <= restB && restB <= runeLen {
-		sb.WriteString(string(runes[restA : restB+1]))
+		sb.WriteString(text(string(runes[restA : restB+1])))
 	}
 	return sb.String()
 }
@@ -176,26 +196,31 @@ func linkUsersAndHashtags(s string) string {
 	return htRegex.ReplaceAllString(s, htReplace)
 }
 
-func expandUserEntities(user *types.User, js gjson.Result) {
-	orig := []rune(user.Bio)
-	ent := get(js, "entities")
-	if isNull(ent) {
-		return
-	}
+// expandBio renders a profile description, which X sends as plain text
+// (unlike tweet text), with its URL entities as links and the mentions and
+// hashtags in the text between them linked. xmlEscape's named entities,
+// unlike html.EscapeString's "&#39;", give the hashtag pattern nothing to
+// match.
+func expandBio(bio string, repls []replaceSlice) string {
+	runes := []rune(bio)
+	repls = deduplicate(repls)
+	sortSlices(repls)
+	return replacedWithText(runes, repls, 0, len(runes), func(s string) string {
+		return linkUsersAndHashtags(xmlEscape(s))
+	})
+}
 
+func expandUserEntities(user *types.User, js gjson.Result) {
+	ent := get(js, "entities")
 	if urls := get(ent, "url.urls"); notNull(urls) {
 		user.Website = getExpandedURL(idx(urls, 0), "")
 	}
 
 	var repls []replaceSlice
 	for _, u := range arr(get(ent, "description.urls")) {
-		repls = extractURLs(repls, u, len(orig)-1, false, false)
+		repls = extractURLs(repls, u, utf8.RuneCountInString(user.Bio)-1, false, false)
 	}
-
-	repls = deduplicate(repls)
-	sortSlices(repls)
-
-	user.Bio = linkUsersAndHashtags(replacedWith(orig, repls, 0, len(orig)))
+	user.Bio = expandBio(user.Bio, repls)
 }
 
 func indexOf(s []string, v string) int { return slices.Index(s, v) }
@@ -610,7 +635,6 @@ func ExpandFxText(tweet *types.Tweet, rawText gjson.Result, replyTo string, hide
 
 // ExpandFxBio expands FxTwitter's raw_description into user.Bio.
 func ExpandFxBio(user *types.User, raw gjson.Result) {
-	orig := []rune(str(get(raw, "text")))
 	var repls []replaceSlice
 	for _, f := range arr(get(raw, "facets")) {
 		if str(get(f, "type")) == "url" {
@@ -620,11 +644,7 @@ func ExpandFxBio(user *types.User, raw gjson.Result) {
 				display: formatters.ShortLink(url), a: a, b: b})
 		}
 	}
-
-	repls = deduplicate(repls)
-	sortSlices(repls)
-
-	user.Bio = linkUsersAndHashtags(replacedWith(orig, repls, 0, len(orig)))
+	user.Bio = expandBio(str(get(raw, "text")), repls)
 }
 
 // ExpandFxNote renders an FxTwitter community note as HTML.
