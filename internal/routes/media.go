@@ -28,8 +28,11 @@ const (
 
 // mediaClient never follows redirects: proxyMedia only follows them to
 // Twitter hosts, so a redirect can't reach an internal address (#1411).
+// Like every outbound client, it takes its proxy from HTTP_PROXY,
+// HTTPS_PROXY and NO_PROXY.
 var mediaClient = &http.Client{
 	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: mediaIdleTimeout,
 		IdleConnTimeout:       90 * time.Second,
 		MaxIdleConnsPerHost:   32,

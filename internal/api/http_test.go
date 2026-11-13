@@ -13,10 +13,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -224,13 +226,15 @@ func proxyServer(t *testing.T, cert tls.Certificate, rejectConnect bool) (string
 	return addr, seen
 }
 
-func proxyClient(t *testing.T, proxyURL, proxyAuth string, roots *x509.CertPool) {
+// proxyClient makes the API client use proxyURL, as http.ProxyFromEnvironment
+// would with HTTP_PROXY and HTTPS_PROXY set to it.
+func proxyClient(t *testing.T, proxyURL string, roots *x509.CertPool) {
 	t.Helper()
-	u, err := parseProxy(proxyURL, proxyAuth)
+	u, err := url.Parse(proxyURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := newHTTPClient(u)
+	c := newHTTPClient(http.ProxyURL(u))
 	c.Transport.(*http.Transport).TLSClientConfig = &tls.Config{RootCAs: roots}
 	useClient(t, c)
 }
@@ -277,7 +281,7 @@ func checkProxied(t *testing.T, seen chan proxied, method, target string) []prox
 func TestHTTPProxyUsesAbsoluteForm(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
 		addr, seen := proxyServer(t, tls.Certificate{}, false)
-		proxyClient(t, "http://"+addr, "", nil)
+		proxyClient(t, "http://"+addr, nil)
 		requestTwice(t, method, "http://origin.test"+proxyPath)
 		checkProxied(t, seen, method, "http://origin.test"+proxyPath)
 	}
@@ -286,7 +290,7 @@ func TestHTTPProxyUsesAbsoluteForm(t *testing.T) {
 func TestHTTPSProxyUsesConnect(t *testing.T) {
 	cert, roots := selfSigned(t, "origin.test")
 	addr, seen := proxyServer(t, cert, false)
-	proxyClient(t, "http://"+addr, "user:password", roots)
+	proxyClient(t, "http://user:password@"+addr, roots)
 	requestTwice(t, http.MethodGet, "https://origin.test"+proxyPath)
 
 	connect := next(t, seen)
@@ -306,14 +310,12 @@ func TestHTTPSProxyUsesConnect(t *testing.T) {
 }
 
 func TestHTTPProxyAuth(t *testing.T) {
-	for _, tc := range []struct{ urlAuth, auth, want string }{
-		{"user:password@", "", "user:password"},
-		{"", "user:password", "user:password"},
-		{"old:password@", "new:password", "new:password"},
-		{"", "user:pass:word", "user:pass:word"},
+	for _, tc := range []struct{ urlAuth, want string }{
+		{"user:password@", "user:password"},
+		{"user:pass%3Aword@", "user:pass:word"},
 	} {
 		addr, seen := proxyServer(t, tls.Certificate{}, false)
-		proxyClient(t, "http://"+tc.urlAuth+addr, tc.auth, nil)
+		proxyClient(t, "http://"+tc.urlAuth+addr, nil)
 		requestTwice(t, http.MethodGet, "http://origin.test"+proxyPath)
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte(tc.want))
 		for _, p := range checkProxied(t, seen, http.MethodGet, "http://origin.test"+proxyPath) {
@@ -324,16 +326,21 @@ func TestHTTPProxyAuth(t *testing.T) {
 	}
 }
 
-func TestProxyAuthNeedsSeparator(t *testing.T) {
-	_, err := parseProxy("http://127.0.0.1:1", "invalid")
-	if err == nil || !strings.Contains(err.Error(), "proxyAuth must contain username:password") {
-		t.Fatalf("got %v", err)
+func TestClientsUseEnvironmentProxy(t *testing.T) {
+	// Functions can't be compared, so check the proxy each picks for a
+	// request; ProxyFromEnvironment reads the variables once per process,
+	// so this compares against what it returns rather than setting them.
+	req, _ := http.NewRequest(http.MethodGet, "https://api.x.com/", nil)
+	want, wantErr := http.ProxyFromEnvironment(req)
+	got, err := httpClient.Transport.(*http.Transport).Proxy(req)
+	if fmt.Sprint(got) != fmt.Sprint(want) || (err == nil) != (wantErr == nil) {
+		t.Fatalf("API client proxy %v, %v; ProxyFromEnvironment %v, %v", got, err, want, wantErr)
 	}
 }
 
 func TestRejectedConnectClosesProxyConnection(t *testing.T) {
 	addr, seen := proxyServer(t, tls.Certificate{}, true)
-	proxyClient(t, "http://"+addr, "", nil)
+	proxyClient(t, "http://"+addr, nil)
 	if _, err := doRequest(context.Background(), http.MethodGet, "https://origin.test/path", nil, "",
 		5*time.Second); err == nil {
 		t.Fatal("a rejected CONNECT must fail the request")

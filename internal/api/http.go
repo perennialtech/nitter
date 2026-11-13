@@ -16,14 +16,17 @@ import (
 )
 
 // httpClient sends every upstream request, so they share its connection
-// pool. Init replaces it to apply the configured proxy.
-var httpClient = newHTTPClient(nil)
+// pool. Like every outbound client, it takes its proxy from HTTP_PROXY,
+// HTTPS_PROXY and NO_PROXY.
+var httpClient = newHTTPClient(http.ProxyFromEnvironment)
 
 // errTimeout is returned when an upstream response takes longer than its
 // deadline.
 var errTimeout = errors.New("upstream response timed out")
 
-func newHTTPClient(proxy *url.URL) *http.Client {
+// newHTTPClient builds the API client. proxy picks each request's proxy, as
+// http.Transport.Proxy does; nil means none.
+func newHTTPClient(proxy func(*http.Request) (*url.URL, error)) *http.Client {
 	// The private API is known to work over HTTP/1.1, which Nim used; an
 	// HTTP/2 client looks different to X's bot detection. This transport is
 	// built rather than cloned from http.DefaultTransport, whose TLS config
@@ -40,34 +43,9 @@ func newHTTPClient(proxy *url.URL) *http.Client {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: time.Second,
-	}
-	if proxy != nil {
-		t.Proxy = http.ProxyURL(proxy)
+		Proxy:                 proxy,
 	}
 	return &http.Client{Transport: t}
-}
-
-// parseProxy builds the proxy URL from the proxy and proxyAuth settings.
-// proxyAuth, "username:password", replaces any credentials in the URL.
-func parseProxy(rawURL, auth string) (*url.URL, error) {
-	if rawURL == "" {
-		return nil, nil
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("proxy: %w", err)
-	}
-	if u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("proxy must be a URL such as http://host:port, got %q", rawURL)
-	}
-	if auth != "" {
-		user, pass, ok := strings.Cut(auth, ":")
-		if !ok {
-			return nil, errors.New("proxyAuth must contain username:password")
-		}
-		u.User = url.UserPassword(user, pass)
-	}
-	return u, nil
 }
 
 type response struct {

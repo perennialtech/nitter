@@ -37,7 +37,7 @@ func TestOptionsAreDocumented(t *testing.T) {
 		}
 	}
 	for _, e := range EnvVars {
-		if !strings.HasPrefix(e.Name, "NITTER_") || !strings.HasSuffix(e.Doc, ".") {
+		if !(strings.HasPrefix(e.Name, "NITTER_") || e.Stdlib) || !strings.HasSuffix(e.Doc, ".") {
 			t.Errorf("%s: undocumented or misnamed", e.Name)
 		}
 	}

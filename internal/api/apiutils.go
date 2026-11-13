@@ -60,11 +60,6 @@ var (
 // (cfg.GuestAuth, which must match flags.GuestAuth), guestBearerToken is
 // the bearer token guest requests authenticate with.
 func Init(cfg *config.Config, guestBearerToken string) error {
-	proxy, err := parseProxy(cfg.Proxy, cfg.ProxyAuth)
-	if err != nil {
-		return err
-	}
-	httpClient = newHTTPClient(proxy)
 	apiProxy = ""
 	if cfg.APIProxy != "" {
 		apiProxy = strings.Trim(cfg.APIProxy, "/") + "/"
