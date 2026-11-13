@@ -322,7 +322,7 @@ func (s *Server) timelineRoutes() {
 				return err
 			}
 			if len(profile.Tweets.Content) == 0 {
-				return c.status(http.StatusNotFound)
+				return c.status(http.StatusNoContent)
 			}
 			profile.Tweets.Beginning = true
 			return c.html(http.StatusOK, string(views.RenderTimelineTweets(profile.Tweets, p, c.fullPath(), nil)))
