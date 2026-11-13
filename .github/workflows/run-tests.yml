@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Install sassc
         run: |
@@ -42,7 +42,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends sassc
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
@@ -53,7 +53,7 @@ jobs:
         run: CGO_ENABLED=0 make build
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: nitter-linux-${{ github.sha }}
           path: |
@@ -66,9 +66,9 @@ jobs:
     name: Offline smoke tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nitter-linux-${{ github.sha }}
           path: .
@@ -99,10 +99,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Cache pipx (poetry)
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.local/pipx
@@ -113,10 +113,10 @@ jobs:
         env:
           PIPX_HOME: ~/.local/pipx
           PIPX_BIN_DIR: ~/.local/bin
-        run: command -v poetry >/dev/null 2>&1 || pipx install poetry
+        run: command -v poetry >/dev/null 2>&1 || pipx install poetry==2.2.1
 
       - name: Setup Python (3.14) with Poetry cache
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"
           cache: poetry
@@ -127,7 +127,7 @@ jobs:
         run: poetry sync
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nitter-linux-${{ github.sha }}
           path: .

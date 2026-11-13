@@ -41,3 +41,19 @@ The Python tests in `tests/` run against a built binary, as CI does:
 
 `go run ./cmd/test-sessions sessions.jsonl` checks each cookie session in a
 sessions file with one request.
+
+## Pinned dependencies
+
+Everything fetched from outside the repo is pinned to an immutable
+reference, with its release in a comment next to it:
+
+- GitHub Actions by commit SHA (`uses: actions/checkout@<sha> # v6.1.0`).
+- The Dockerfile's builder image by digest
+  (`golang:1.27.4-alpine3.24@sha256:...`). `scratch` has no digest.
+- Go modules by `go.sum`, the test dependencies by `tests/poetry.lock`, and
+  the session tools by the hashes in `tools/requirements.txt`, compiled from
+  `tools/requirements.in` (the command is in that file).
+
+To update a pin, change the SHA or digest and its comment together. Resolve
+a tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (dereference
+annotated tags) or `docker buildx imagetools inspect <image>:<tag>`.
