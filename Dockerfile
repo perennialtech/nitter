@@ -2,7 +2,7 @@ FROM golang:1.27-alpine AS build
 LABEL maintainer="setenforce@protonmail.com"
 
 # git lets go build stamp the commit shown on the about page.
-RUN apk add --no-cache git make sassc
+RUN apk add --no-cache ca-certificates git make sassc
 
 WORKDIR /src/nitter
 COPY go.mod go.sum ./
@@ -11,15 +11,12 @@ RUN go mod download
 COPY . .
 RUN make check && CGO_ENABLED=0 make build
 
-FROM debian:bookworm-slim
+FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 WORKDIR /src/
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates wget \
-    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/nitter/nitter ./
 COPY --from=build /src/nitter/nitter.example.conf ./nitter.conf
 COPY --from=build /src/nitter/public ./public
 EXPOSE 8080
-RUN useradd --home-dir /src --no-create-home --shell /usr/sbin/nologin nitter
-USER nitter
+USER 998:998
 CMD ["./nitter"]

@@ -175,6 +175,11 @@ exist, Docker silently creates a directory in its place and the container fails
 with `not a directory: Are you trying to mount a directory onto a file`. Remove
 that directory and create the file as shown above.
 
+The image runs as UID and GID 998, so both mounted files have to be readable
+by that user. It has no shell or HTTP client; for a container healthcheck run
+`/src/nitter healthcheck`, as `compose.yml` does. It exits non-zero unless
+Nitter answers on the port set in `nitter.conf`.
+
 ### systemd
 
 To run Nitter via systemd you can use this service file:
