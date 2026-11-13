@@ -336,27 +336,25 @@ func GetReadyGuestSession(ctx context.Context, req Req, activate GuestActivator)
 	}
 }
 
-// GetSession acquires a random account session that is ready for req.
+// GetSession acquires a random account session that is ready for req. It
+// chooses among the ready sessions: drawing len(sessionPool) times from the
+// whole pool misses a lone ready session about a third of the time.
 func GetSession(req Req) (*Session, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	var s *Session
-	for range sessionPool {
+	var ready []*Session
+	for _, s := range sessionPool {
 		if isReady(s, req) {
-			break
+			ready = append(ready, s)
 		}
-		s = sessionPool[rand.IntN(len(sessionPool))]
 	}
-	if isReady(s, req) {
-		s.pending++
-		return s, nil
-	}
-	if s == nil {
+	if len(ready) == 0 {
 		logf("no sessions available for API: %s", req.Cookie)
-	} else {
-		logf("no sessions available for API: %s, last tried: %s", req.Endpoint(s), s)
+		return nil, types.ErrNoSessions
 	}
-	return nil, types.ErrNoSessions
+	s := ready[rand.IntN(len(ready))]
+	s.pending++
+	return s, nil
 }
 
 // selectCookieSession picks the least busy ready cookie session. Grok
