@@ -61,12 +61,9 @@ Twitter, and in most cases serves pages faster (eg. timelines load 2-4x faster).
 - sassc, to compile the stylesheets (`sassc` on most distros)
 - make
 
-Here's how to create a `nitter` user, clone the repo, and build the binary
-and stylesheets.
+Here's how to clone the repo and build the binary and stylesheets.
 
 ```bash
-# useradd -m nitter
-# su nitter
 $ git clone https://github.com/perennialtech/nitter
 $ cd nitter
 $ make build
@@ -140,34 +137,31 @@ Nitter answers on the port set in `nitter.conf`.
 
 ### systemd
 
-To run Nitter via systemd you can use this service file:
+[`nitter.service`](nitter.service) runs Nitter from `/opt/nitter` as a
+throwaway user that can't write anywhere, with its config and sessions in
+`/etc/nitter`. Build the binary with `CGO_ENABLED=0 make build`: the
+service only allows IPv4 and IPv6 sockets, and a cgo build may resolve
+names through glibc modules that need others. The service doesn't start
+without a sessions file, so if you have none, create an empty one with
+`touch sessions.jsonl`. Then, as root in the repo:
 
-```ini
-[Unit]
-Description=Nitter (An alternative Twitter front-end)
-After=syslog.target
-After=network.target
-
-[Service]
-Type=simple
-
-# set user and group
-User=nitter
-Group=nitter
-
-# configure location
-WorkingDirectory=/home/nitter/nitter
-ExecStart=/home/nitter/nitter/nitter
-
-Restart=always
-RestartSec=15
-
-[Install]
-WantedBy=multi-user.target
+```bash
+# install -D -m 755 nitter /opt/nitter/nitter
+# cp -r public /opt/nitter/
+# install -d -m 700 /etc/nitter
+# install -m 600 nitter.conf sessions.jsonl /etc/nitter/
+# install -m 644 nitter.service /etc/systemd/system/
+# systemctl daemon-reload
+# systemctl enable --now nitter.service
 ```
 
-Then enable and run the service:
-`systemctl enable --now nitter.service`
+For `guestAuth`, put `NITTER_GUEST_BEARER_TOKEN=<token>` in
+`/etc/nitter/env` with mode 600.
+
+systemd copies `nitter.conf` and `sessions.jsonl` for Nitter when the
+service starts, so run `systemctl restart nitter.service` after editing
+them in `/etc/nitter`. To update Nitter, rebuild it, rerun the first two
+commands above and restart the service.
 
 ### Logging
 

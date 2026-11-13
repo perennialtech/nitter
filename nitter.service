@@ -1,0 +1,63 @@
+# Install steps are in README.md under "systemd".
+[Unit]
+Description=Nitter, an alternative Twitter front-end
+Documentation=https://github.com/perennialtech/nitter
+# The address set in nitter.conf may only exist once the network is up.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/opt/nitter
+ExecStart=/opt/nitter/nitter
+Restart=on-failure
+RestartSec=5s
+
+# Nitter writes no files, so it runs as a throwaway user. DynamicUser= also
+# implies ProtectSystem=strict, PrivateTmp=yes, RemoveIPC=yes,
+# NoNewPrivileges=yes and RestrictSUIDSGID=yes.
+DynamicUser=yes
+
+# systemd copies these root-only files into a directory only the service
+# user can read, so neither the HMAC key nor the sessions are readable by
+# other local users.
+LoadCredential=nitter.conf:/etc/nitter/nitter.conf
+LoadCredential=sessions.jsonl:/etc/nitter/sessions.jsonl
+Environment=NITTER_CONF_FILE=%d/nitter.conf
+Environment=NITTER_SESSIONS_FILE=%d/sessions.jsonl
+# Optional, root-only: NITTER_GUEST_BEARER_TOKEN for guestAuth.
+EnvironmentFile=-/etc/nitter/env
+
+# No capabilities, so Nitter can't listen on a port below 1024; run it
+# behind a reverse proxy.
+CapabilityBoundingSet=
+PrivateUsers=yes
+
+ProtectHome=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077
+
+# Outbound requests go to X, FxTwitter and twimg at addresses that change,
+# so there is no IPAddressAllow=. The pure-Go resolver (CGO_ENABLED=0)
+# needs only AF_INET and AF_INET6 to reach the DNS servers.
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# Go generates no code at runtime.
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target
