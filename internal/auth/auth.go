@@ -132,7 +132,7 @@ func isLimited(s *Session, req Req) bool {
 }
 
 func isReady(s *Session, req Req) bool {
-	return s != nil && s.pending <= maxConcurrentReqs && !isLimited(s, req)
+	return s != nil && s.pending < maxConcurrentReqs && !isLimited(s, req)
 }
 
 func isGuestReady(s *Session, req Req) bool {
