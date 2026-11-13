@@ -110,6 +110,11 @@ func fxGet(ctx context.Context, label, path string, params []param,
 	}
 	js := gjson.Parse(resp.body)
 
+	reason := strconv.Itoa(resp.status) + " " + http.StatusText(resp.status)
+	if msg := getStr(js.Get("message")); msg != "" {
+		reason += ", " + msg
+	}
+
 	// The body's code mirrors the HTTP status and is set even on a 200.
 	switch getIntOr(js.Get("code"), resp.status) {
 	case 200:
@@ -117,13 +122,12 @@ func fxGet(ctx context.Context, label, path string, params []param,
 		return js, nil
 	case 404:
 		if !allowNotFound {
-			return gjson.Result{}, newFxError(label, "notfound", getStr(js.Get("message")))
+			return gjson.Result{}, newFxError(label, "notfound", reason)
 		}
 		recordCall("fx", label, "notfound")
 		return js, nil
 	}
-	return gjson.Result{}, newFxError(label, "error",
-		strconv.Itoa(resp.status)+", "+getStr(js.Get("message")))
+	return gjson.Result{}, newFxError(label, "error", reason)
 }
 
 // fxImage drops the scheme and host Nitter doesn't store for pbs.twimg.com.

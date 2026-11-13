@@ -459,6 +459,10 @@ func conversation(ctx context.Context, id, after string, mode types.RankingMode)
 	if id == "" {
 		return nil, nil
 	}
+	conv, err := fxConversation(ctx, id, mode, after)
+	if !fxFailed(err) {
+		return conv, err
+	}
 	js, err := fetch(ctx, tweetDetailURL(id, cursorParam(after), mode))
 	if err != nil {
 		return nil, err
