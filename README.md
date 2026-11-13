@@ -74,7 +74,10 @@ $ cp nitter.example.conf nitter.conf
 ```
 
 Set your hostname, port, HMAC key and https (must be correct for cookies) in
-`nitter.conf`. Run Nitter by executing `./nitter` or using the systemd service
+`nitter.conf`. [`nitter.example.conf`](nitter.example.conf) documents every
+setting and its default, and [`nitter.example.env`](nitter.example.env) the
+environment variables Nitter reads, such as the config and sessions file
+paths. Run Nitter by executing `./nitter` or using the systemd service
 below. You should run Nitter behind a reverse proxy such as
 [Nginx](https://github.com/zedeus/nitter/wiki/Nginx) or
 [Apache](https://github.com/zedeus/nitter/wiki/Apache) for security and

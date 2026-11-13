@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Command nitter serves the Nitter front-end. It reads nitter.conf (or
-// $NITTER_CONF_FILE) and sessions.jsonl (or $NITTER_SESSIONS_FILE).
+// Command nitter serves the Nitter front-end. It reads the config file and
+// sessions file named by config.EnvVars.
 //
 // "nitter healthcheck" asks the instance configured in nitter.conf for
 // /.health and exits non-zero unless it answers 200 OK, for container
@@ -42,17 +42,10 @@ func main() {
 	}
 }
 
-func getenv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
 // healthcheck checks the server on the configured port. /.health only
 // reads the session pools, so it doesn't depend on upstream.
 func healthcheck() error {
-	cfg, err := config.Load(getenv("NITTER_CONF_FILE", "./nitter.conf"))
+	cfg, err := config.Load(config.ConfFile.Value())
 	if err != nil {
 		return err
 	}
@@ -72,7 +65,7 @@ func healthcheck() error {
 }
 
 func run() error {
-	cfg, err := config.Load(getenv("NITTER_CONF_FILE", "./nitter.conf"))
+	cfg, err := config.Load(config.ConfFile.Value())
 	if err != nil {
 		return err
 	}
@@ -101,10 +94,10 @@ func run() error {
 			"set a unique random value to stop media URL signatures being forgeable.")
 	}
 
-	if err := auth.Init(cfg, getenv("NITTER_SESSIONS_FILE", "./sessions.jsonl")); err != nil {
+	if err := auth.Init(cfg, config.SessionsFile.Value()); err != nil {
 		return err
 	}
-	if err := api.Init(cfg, os.Getenv("NITTER_GUEST_BEARER_TOKEN")); err != nil {
+	if err := api.Init(cfg, config.GuestBearerToken.Value()); err != nil {
 		return err
 	}
 
