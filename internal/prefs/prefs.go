@@ -5,6 +5,9 @@
 package prefs
 
 import (
+	"net"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -259,6 +262,22 @@ func Init(cfg *config.Config) error {
 	return nil
 }
 
+var hostnamePattern = regexp.MustCompile(`^[\pL\pN](?:[\pL\pN-]*[\pL\pN])?(?:\.[\pL\pN](?:[\pL\pN-]*[\pL\pN])?)*\.?$`)
+
+func validReplacementHost(value string) bool {
+	if value == "" {
+		return true
+	}
+	u, err := url.Parse("https://" + value)
+	if err != nil || u.Host != value || strings.HasSuffix(value, ":") {
+		return false
+	}
+	if strings.HasPrefix(value, "[") {
+		return net.ParseIP(u.Hostname()) != nil
+	}
+	return hostnamePattern.MatchString(u.Hostname())
+}
+
 func (p *Prefs) apply(values map[string]string) {
 	for _, pref := range All() {
 		v, ok := values[pref.Name]
@@ -269,6 +288,9 @@ func (p *Prefs) apply(values map[string]string) {
 		case *bool:
 			*f = v == "on" || v == "true" || v == "1"
 		case *string:
+			if pref.Kind == Input && !validReplacementHost(v) {
+				continue
+			}
 			if pref.Kind == Input || pref.Name == "theme" || slices.Contains(pref.Options, v) {
 				*f = v
 			}

@@ -4,6 +4,7 @@ package routes
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/perennialtech/nitter/internal/api"
@@ -76,7 +77,8 @@ func (s *Server) searchRoutes() {
 	})
 
 	s.get("/hashtag/@hash", func(c *ctx) error {
-		return c.redirect("/search?f=tweets&q=" + utils.EncodeURL("#"+c.param("hash")))
+		tag, _ := url.PathUnescape(c.param("hash"))
+		return c.redirect("/search?f=tweets&q=" + utils.EncodeURL("#"+tag))
 	})
 
 	s.get("/opensearch", func(c *ctx) error {

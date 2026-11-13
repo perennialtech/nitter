@@ -4,6 +4,7 @@ package formatters
 import (
 	"testing"
 
+	"github.com/perennialtech/nitter/internal/config"
 	"github.com/perennialtech/nitter/internal/prefs"
 )
 
@@ -50,6 +51,13 @@ func TestReplaceURLs(t *testing.T) {
 		if got := ReplaceURLs(c.in, &p, ""); got != c.want {
 			t.Errorf("ReplaceURLs(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestVideoEmbed(t *testing.T) {
+	cfg := &config.Config{Hostname: "nitter.example", UseHTTPS: true}
+	if got, want := VideoEmbed(cfg, 123), "https://nitter.example/i/videos/tweet/123"; got != want {
+		t.Errorf("VideoEmbed = %q, want %q", got, want)
 	}
 }
 
