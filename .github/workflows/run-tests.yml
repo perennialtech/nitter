@@ -32,74 +32,30 @@ jobs:
   build-test:
     name: Build and test
     runs-on: ubuntu-24.04
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-    strategy:
-      matrix:
-        nim: ["2.2.12", "devel"]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
 
-      - name: Install runtime dependencies
+      - name: Install sassc
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libsass-dev libpcre3 openssl
+          sudo apt-get install -y --no-install-recommends sassc
 
-      - name: Cache Nimble Dependencies
-        id: cache-nimble
-        uses: actions/cache@v5
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          path: |
-            ~/.nimble/pkgcache
-            ~/.nimble/packages_official.json
-          key: ${{ matrix.nim }}-nimble-v6-${{ hashFiles('*.nimble') }}
-          restore-keys: |
-            ${{ matrix.nim }}-nimble-v6-
+          go-version-file: go.mod
 
-      - name: Setup Nim
-        uses: jiro4989/setup-nim-action@v2
-        with:
-          nim-version: ${{ matrix.nim }}
-          use-nightlies: ${{ matrix.nim == 'devel' }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check
+        run: make check
 
-      - name: Patch Nim compiler and HTTP transport
-        run: |
-          bash tools/patch-nim.sh
-          bash tools/patch-nim.sh
+      - name: Build
+        run: CGO_ENABLED=0 make build
 
-      - name: Build Project
-        run: nimble build -Y
-
-      - name: Generate assets
-        run: |
-          nimble scss
-          nimble md
-
-      - name: Run Nim regression tests
-        run: |
-          nim r tests/test_ssrf_1411.nim
-          nim r tests/test_formatters.nim
-          nim r tests/test_timeline.nim
-          nim r tests/test_return_destroy.nim
-          nim r tests/test_guest_auth.nim
-          nim r tests/test_upstream_features.nim
-          nim r tests/test_redis_cache.nim
-          nim r tests/test_http_client_timeout.nim
-          nim r tests/test_fxtwitter.nim
-
-      - name: Test HTTP and HTTPS CONNECT proxies
-        run: python3 tests/test_http_proxy.py -v
-
-      - name: Upload 2.2.12 build artifact
-        if: matrix.nim == '2.2.12'
+      - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: nitter-linux-nim-2.2.12-${{ github.sha }}
+          name: nitter-linux-${{ github.sha }}
           path: |
             ./nitter
             ./public
@@ -117,14 +73,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install runtime dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpcre3
-
       - uses: actions/download-artifact@v4
         with:
-          name: nitter-linux-nim-2.2.12-${{ github.sha }}
+          name: nitter-linux-${{ github.sha }}
           path: .
 
       - name: Test local pages and Catppuccin themes
@@ -158,10 +109,6 @@ jobs:
           - 6379:6379
 
     steps:
-      - name: Install runtime deps
-        run: |
-          sudo apt-get install -y --no-install-recommends libpcre3
-
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -190,10 +137,10 @@ jobs:
         working-directory: tests
         run: poetry sync
 
-      - name: Download 2.2.12 build artifact
+      - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: nitter-linux-nim-2.2.12-${{ github.sha }}
+          name: nitter-linux-${{ github.sha }}
           path: .
 
       - name: Make nitter binary executable
