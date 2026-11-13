@@ -301,7 +301,7 @@ func UserPic(userPic, style string) string {
 }
 
 func VideoEmbed(cfg *config.Config, id int64) string {
-	return fmt.Sprintf("%s/i/videos/%d", cfg.URLPrefix(), id)
+	return fmt.Sprintf("%s/i/videos/tweet/%d", cfg.URLPrefix(), id)
 }
 
 func UserPageTitle(u types.User) string {
