@@ -362,6 +362,22 @@ func TestProfileSelectors(t *testing.T) {
 		".media-view-tabs .tab-item.active a", ".tab .tab-item.active a", ".timeline-none")
 }
 
+// Location is free text, and a location containing "://" is linked.
+func TestProfileLinksNeedSafeScheme(t *testing.T) {
+	p := prefs.Defaults
+	u := types.User{Username: "a", Location: "javascript://%0aalert(1)", Website: "javascript:alert(1)"}
+	out := string(RenderUserCard(u, &p, types.AccountInfo{}))
+	if strings.Contains(out, `href="javascript`) {
+		t.Errorf("unsafe href: %s", out)
+	}
+
+	u = types.User{Username: "a", Location: "https://example.com/x?a=1&b=2", Website: "https://example.org/?a=1&b=2"}
+	doc := parse(t, RenderUserCard(u, &p, types.AccountInfo{}))
+	requireSel(t, doc,
+		`.profile-location a[href="https://example.com/x?a=1&b=2"]`,
+		`.profile-website a[href="https://example.org/?a=1&b=2"]`)
+}
+
 func TestConversationSelectors(t *testing.T) {
 	p := prefs.Defaults
 	tw := func(id int64, text string) *types.Tweet {

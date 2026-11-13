@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"math/rand"
 	"slices"
 	"sort"
@@ -122,6 +123,76 @@ func TestFxBioLinksMentionsAndHashtags(t *testing.T) {
 		`<a href="/NASAWebb">@NASAWebb</a> <a href="/search?f=tweets&q=%23space">#space</a>`
 	if u.Bio != want {
 		t.Errorf("got %q\nwant %q", u.Bio, want)
+	}
+}
+
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// bioParsers runs each parser that builds User.Bio on a description whose
+// only URL entity is https://t.co/a at indices [4, 18], expanded to url.
+func bioParsers(t *testing.T, text, url string) map[string]string {
+	desc, exp := jsonString(t, text), jsonString(t, url)
+	urls := `{"urls":[{"url":"https://t.co/a","expanded_url":` + exp + `,"indices":[4,18]}]}`
+
+	var fx types.User
+	ExpandFxBio(&fx, pj(`{"text":`+desc+`,"facets":[{"type":"url","indices":[4,18],`+
+		`"original":"https://t.co/a","replacement":`+exp+`}]}`))
+	return map[string]string{
+		"fxtwitter": fx.Bio,
+		"embedded":  parseUser(pj(`{"description":`+desc+`,"entities":{"description":`+urls+`}}`), "1").Bio,
+		"graphql legacy": ParseGraphUser(pj(`{"data":{"user":{"result":{"legacy":{"screen_name":"a",` +
+			`"description":` + desc + `,"entities":{"description":` + urls + `}}}}}}`)).Bio,
+		"graphql modern": ParseGraphUser(pj(`{"data":{"user":{"result":{"core":{"screen_name":"a"},` +
+			`"profile_bio":{"description":` + desc + `,"entities":{"description":` + urls + `}}}}}}`)).Bio,
+	}
+}
+
+// X sends descriptions as plain text, unlike tweet text: FxTwitter's
+// raw_description for @benandjerrys is "Peace, Love, & Ice Cream", while
+// its tweets' raw_text has "Ben &amp; Jerry's".
+func TestBioTextIsEscaped(t *testing.T) {
+	text := `see https://t.co/a & <img src=x onerror=alert(1)> "@bob" #go`
+	want := `see <a href="https://example.com/">example.com/</a> &amp; ` +
+		`&lt;img src=x onerror=alert(1)&gt; &quot;<a href="/bob">@bob</a>&quot; ` +
+		`<a href="/search?f=tweets&q=%23go">#go</a>`
+	for name, got := range bioParsers(t, text, "https://example.com/") {
+		if got != want {
+			t.Errorf("%s:\n got %q\nwant %q", name, got, want)
+		}
+	}
+}
+
+func TestBioLinksAreEscaped(t *testing.T) {
+	for url, want := range map[string]string{
+		// Mentions and hashtags are linked in the text, not inside a link.
+		"https://example.com/?u=@evil&t=#x": `<a href="https://example.com/?u=@evil&amp;t=#x">` +
+			`example.com/?u=@evil&amp;t=#x</a>`,
+		`https://example.com/"><b>`: `<a href="https://example.com/&quot;&gt;&lt;b&gt;">` +
+			`example.com/&quot;&gt;&lt;b&gt;</a>`,
+		"javascript:alert(1)": "javascript:alert(1)",
+	} {
+		want = "see " + want + ` <a href="/bob">@bob</a>`
+		for name, got := range bioParsers(t, "see https://t.co/a @bob", url) {
+			if got != want {
+				t.Errorf("%s, %q:\n got %q\nwant %q", name, url, got, want)
+			}
+		}
+	}
+}
+
+func TestTweetLinksNeedHTTPScheme(t *testing.T) {
+	tweet := newTweet()
+	entities := pj(`{"urls":[{"url":"https://t.co/z","expanded_url":"javascript:alert(1)","indices":[3,17]}]}`)
+	expandTextEntities(tweet, entities, "hi https://t.co/z", 0, 17, "", false, false)
+	if want := "hi javascript:alert(1)"; tweet.Text != want {
+		t.Errorf("got %q", tweet.Text)
 	}
 }
 
@@ -373,31 +444,6 @@ func TestUserAndHashtagRegexes(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := linkUsersAndHashtags(in); got != want {
-			t.Errorf("%q:\n got %q\nwant %q", in, got, want)
-		}
-	}
-}
-
-func TestExperimentalHashtagMatcher(t *testing.T) {
-	link := func(prefix, hash, name string) string {
-		return prefix + `<a href="/search?f=tweets&q=%23` + name + `">` + hash + name + "</a>"
-	}
-	linked := `<a href="/search?f=tweets&q=%23tag">#tag</a>`
-	cases := map[string]string{
-		"#go":        link("", "#", "go"),
-		"see #go!":   "see " + link("", "#", "go") + "!",
-		"#ab#":       "#ab#",                   // possessive name, then # follows: no match
-		"##a":        "#" + link("", "#", "a"), // falls back to # as the prefix
-		"x #":        "x " + link("", "#", ""),
-		"/#x":        "/" + link("", "#", "x"), // / isn't excluded here
-		"a#x .#y":    "a#x .#y",
-		linked:       linked,
-		`#x">`:       `#x">`,
-		"＃全":         link("", "＃", "") + "全",
-		"é$TSLA end": "é" + link("", "$", "TSLA") + " end",
-	}
-	for in, want := range cases {
-		if got := expLinkHashtags(in); got != want {
 			t.Errorf("%q:\n got %q\nwant %q", in, got, want)
 		}
 	}

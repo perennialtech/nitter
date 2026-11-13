@@ -17,7 +17,7 @@
     {{- if .U.Location}}
     <div class="profile-location">
       <span>{{icon "location"}}</span>
-      {{- if .PlaceURL}}<a href="{{url .PlaceURL}}">{{.Place}}</a>{{else}}<span>{{.Place}}</span>{{end -}}
+      {{- if .PlaceURL}}<a href="{{.PlaceURL}}">{{.Place}}</a>{{else}}<span>{{.Place}}</span>{{end -}}
     </div>
     {{- end}}
     {{- with .Info.BasedIn}}
@@ -28,7 +28,7 @@
     {{- end}}
     {{- if .U.Website}}
     <div class="profile-website">
-      <span>{{icon "link"}}<a href="{{url .Website}}">{{.WebsiteText}}</a></span>
+      <span>{{icon "link"}}<a href="{{.Website}}">{{.WebsiteText}}</a></span>
     </div>
     {{- end}}
     <div class="profile-joindate">
