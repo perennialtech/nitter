@@ -23,7 +23,6 @@ invalid = [['thisprofiledoesntexist']]
 malformed = [
     ['${userId}'],
     ['$%7BuserId%7D'],  # URL encoded version
-    ['%'],  # Percent sign is invalid
     ['user@name'],
     ['user.name'],
     ['user-name'],
@@ -92,6 +91,11 @@ class ProfileTest(BaseTestCase):
         self.open_nitter(username)
         # Malformed usernames should return 404 page not found, not try to fetch from Twitter
         self.assert_text('Page not found')
+
+    def test_invalid_percent_escape(self):
+        """A lone percent sign isn't a valid URL; the server rejects it before routing"""
+        self.open_nitter('%')
+        self.assert_text('400 Bad Request')
 
     def test_suspended(self):
         self.open_nitter('suspendme')
