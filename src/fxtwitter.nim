@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 ## Client for the public FxTwitter API (https://docs.fxembed.com/api/), which
 ## serves X data without Nitter's own account sessions.
-import std/[asyncdispatch, httpclient, strutils, options, times, uri]
+import std/[asyncdispatch, httpclient, strutils, options, times, uri, tables, sequtils]
 import packedjson
 import types, parserutils, utils, http_client, apistats, apiutils
 
@@ -57,6 +57,10 @@ proc fxGet(label, path: string; params: seq[(string, string)] = @[];
   except CatchableError:
     raise fxError(label, "error", resp.status & ", body is not JSON")
 
+  let
+    message = js{"message"}.getStr
+    reason = if message.len > 0: resp.status & ", " & message else: resp.status
+
   # The body's code mirrors the HTTP status and is set even on a 200.
   case js{"code"}.getInt(resp.code.int)
   of 200:
@@ -64,11 +68,11 @@ proc fxGet(label, path: string; params: seq[(string, string)] = @[];
     result = js
   of 404:
     if not allowNotFound:
-      raise fxError(label, "notfound", js{"message"}.getStr)
+      raise fxError(label, "notfound", reason)
     recordCall("fx", label, "notfound")
     result = js
   else:
-    raise fxError(label, "error", resp.status & ", " & js{"message"}.getStr)
+    raise fxError(label, "error", reason)
 
 proc fxImage(url: string): string =
   ## Nitter stores pbs.twimg.com URLs without the scheme and host.
@@ -293,3 +297,54 @@ proc getFxConnections*(userId: string; kind: QueryKind; count: int;
 proc getFxReposters*(id: string; count: int; after = ""): Future[UsersTimeline] {.async.} =
   let js = await fxGet("status/reposts", "status/" & id & "/reposts", pageParams(count, after))
   result = parseFxUsers(js, after)
+
+proc parseFxConversation*(js: JsonNode; after = ""): Conversation =
+  let focal = parseFxTweet(js{"status"})
+  result = Conversation(
+    tweet: focal,
+    replies: Result[Chain](beginning: after.len == 0, bottom: js{"cursor", "bottom"}.getStr)
+  )
+
+  # FxTwitter lists the ancestors out of order, so follow the reply links up.
+  var ancestors: Table[int64, Tweet]
+  with thread, js{"thread"}:
+    for status in thread:
+      let tweet = parseFxTweet(status)
+      if tweet.id != 0 and tweet.id != focal.id:
+        ancestors[tweet.id] = tweet
+  var parent = focal.replyId
+  while parent in ancestors:
+    let tweet = ancestors[parent]
+    ancestors.del parent
+    result.before.content.insert(tweet, 0)
+    parent = tweet.replyId
+
+  # Replies keep X's reply chains, flattened in order: a reply to the
+  # previous reply continues its chain.
+  var chains: seq[Chain]
+  with replies, js{"replies"}:
+    for status in replies:
+      let tweet = parseFxTweet(status)
+      if tweet.id == 0: continue
+      if chains.len > 0 and tweet.replyId != focal.id and
+         tweet.replyId == chains[^1].content[^1].id:
+        chains[^1].content.add tweet
+      else:
+        chains.add Chain(content: @[tweet])
+
+  # The author's own continuation leads the first page, like X's self-thread.
+  if after.len == 0 and chains.len > 0 and
+     chains[0].content[0].replyId == focal.id and
+     chains[0].content.allIt(it.user.id == focal.user.id):
+    result.after = chains[0]
+    chains.delete 0
+  result.replies.content = chains
+
+proc getFxConversation*(id: string; mode: RankingMode; after = ""): Future[Conversation] {.async.} =
+  var params = @[("ranking_mode", if mode == Recency: "recency" else: "likes")]
+  if after.len > 0:
+    params.add ("cursor", after)
+  let js = await fxGet("conversation", "conversation/" & id, params)
+  result = parseFxConversation(js, after)
+  if result.tweet.id == 0:
+    raise newException(FxError, "FxTwitter conversation: no status in the response")

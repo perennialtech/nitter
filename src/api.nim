@@ -486,6 +486,14 @@ proc translateOnDemand*(id: string; note = false;
 
 proc getGraphTweet(id: string; after=""; mode = Relevance): Future[Conversation] {.async.} =
   if id.len == 0: return
+  # FxTwitter ranks replies by likes or recency; X's Relevance ranking comes
+  # out as likes.
+  var fromFx = false
+  try:
+    result = await getFxConversation(id, mode, after)
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   let
     cursor = cursorParam(after)
     js = await fetch(tweetDetailUrl(id, cursor, mode))
