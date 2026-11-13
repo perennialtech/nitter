@@ -13,6 +13,12 @@ make check
 This is what CI runs: `gofmt`, `go vet` and `go test ./...`. The Go tests
 use local fakes and need no network access.
 
+Every setting is defined and documented in code: config keys and
+environment variables in `internal/config/options.go`, preferences in
+`internal/prefs/prefs.go`. `make generate` writes `nitter.example.conf` and
+`nitter.example.env` from them, and `make check` fails until those are
+current.
+
 ## Building and running
 
 ```bash
@@ -22,8 +28,8 @@ cp nitter.example.conf nitter.conf
 ```
 
 `make build` needs `sassc` for the stylesheets. Nitter reads account
-sessions from `sessions.jsonl` (see the README). `NITTER_CONF_FILE` and
-`NITTER_SESSIONS_FILE` override both paths.
+sessions from `sessions.jsonl` (see the README); `nitter.example.env` lists
+the variables that override both paths.
 
 ## Tests against a running instance
 
