@@ -16,22 +16,18 @@ def curl_status(url):
 class TestMalformedPaths:
     """Test that malformed paths don't crash the server.
 
-    URLs like //foo are parsed as having 'foo' as the authority (host),
-    resulting in an empty path. Empty paths previously crashed jester's
-    static file handler. Now they return 400.
-
-    URLs like //foo/bar are parsed as authority='foo', path='/bar',
-    so they route normally (not empty path).
+    Go keeps leading double slashes in request paths. Paths like //foo
+    don't match a route and return 404. Repeated requests must leave the
+    server responding.
     """
 
     @parameterized.expand([
-        # These parse to empty paths -> 400
-        ('//lefty_rae', 400),
-        ('//test', 400),
-        ('//anyuser', 400),
+        ('//lefty_rae', 404),
+        ('//test', 404),
+        ('//anyuser', 404),
     ])
-    def test_empty_path_returns_400(self, path, expected_status):
-        """URLs that parse to empty paths should return 400, not crash."""
+    def test_double_slash_paths_return_404(self, path, expected_status):
+        """Paths with leading double slashes should return 404 without crashing."""
         status = curl_status(f'{BASE_URL}{path}')
         assert status == expected_status, \
             f'Expected {expected_status} for {path}, got {status}'
@@ -49,11 +45,10 @@ class TestMalformedPaths:
 
     def test_server_survives_malformed_requests(self):
         """Server should handle malformed requests without crashing."""
-        # These all parse to empty paths
         malformed_paths = ['//a', '//b', '//c', '//user', '//test']
         for path in malformed_paths:
             status = curl_status(f'{BASE_URL}{path}')
-            assert status == 400, f'Expected 400 for {path}, got {status}'
+            assert status == 404, f'Expected 404 for {path}, got {status}'
 
         # Verify server is still responding after malformed requests
         status = curl_status(f'{BASE_URL}/')
