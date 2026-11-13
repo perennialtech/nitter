@@ -135,7 +135,7 @@ docker run -v "$(pwd)/nitter.conf:/src/nitter.conf:ro" \
   -d --network host ghcr.io/perennialtech/nitter:latest
 ```
 
-Use `compose.yml` to run both Nitter and Redis as different containers:
+Use `compose.yaml` to run both Nitter and Redis as different containers:
 Change `redisHost` from `localhost` to `nitter-redis` in `nitter.conf`, then run:
 
 ```bash
@@ -150,7 +150,7 @@ that directory and create the file as shown above.
 
 The image runs as UID and GID 998, so both mounted files have to be readable
 by that user. It has no shell or HTTP client; for a container healthcheck run
-`/src/nitter healthcheck`, as `compose.yml` does. It exits non-zero unless
+`/src/nitter healthcheck`, as `compose.yaml` does. It exits non-zero unless
 Nitter answers on the port set in `nitter.conf`.
 
 ### systemd
