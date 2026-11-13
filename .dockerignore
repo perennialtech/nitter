@@ -1,10 +1,13 @@
-*.png
-*.md
-LICENSE
-docker-compose.yml
-compose.yml
-Dockerfile
-nitter
-nitter.conf
-sessions.jsonl
-tests/
+# Send the image build only what it needs; anything not listed here stays
+# out of the build context.
+*
+!cmd
+!internal
+!public
+!sass
+!go.mod
+!go.sum
+!Makefile
+!nitter.example.conf
+# go build reads .git to stamp the commit shown on the about page.
+!.git
