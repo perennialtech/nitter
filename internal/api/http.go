@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,18 +24,26 @@ var httpClient = newHTTPClient(nil)
 var errTimeout = errors.New("upstream response timed out")
 
 func newHTTPClient(proxy *url.URL) *http.Client {
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.Proxy = nil
+	// The private API is known to work over HTTP/1.1, which Nim used; an
+	// HTTP/2 client looks different to X's bot detection. This transport is
+	// built rather than cloned from http.DefaultTransport, whose TLS config
+	// keeps offering h2 over ALPN even when HTTP/2 is turned off.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	t := &http.Transport{
+		DialContext:  (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		Protocols:    protocols,
+		MaxIdleConns: 100,
+		// Nearly every request goes to the same few hosts, concurrently; the
+		// default of 2 idle connections per host would redial most of them.
+		MaxIdleConnsPerHost:   64,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
 	if proxy != nil {
 		t.Proxy = http.ProxyURL(proxy)
 	}
-	// Nearly every request goes to the same few hosts, concurrently; the
-	// default of 2 idle connections per host would redial most of them.
-	t.MaxIdleConnsPerHost = 64
-	// The private API is known to work over HTTP/1.1, which Nim used; an
-	// HTTP/2 client looks different to X's bot detection.
-	t.Protocols = new(http.Protocols)
-	t.Protocols.SetHTTP1(true)
 	return &http.Client{Transport: t}
 }
 
