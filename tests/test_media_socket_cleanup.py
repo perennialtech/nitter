@@ -169,11 +169,12 @@ class MediaSocketCleanupTests(unittest.TestCase):
         after = len(os.listdir(self.fd_path))
         self.assertLessEqual(after - before, 4, "abandoned streams retained sockets")
 
-    def test_disconnected_client_does_not_wait_for_upstream_headers(self):
+    def close_while_upstream_headers_pending(self, reset):
         before = len(os.listdir(self.fd_path))
         media_url = f"http://pbs.twimg.com:{self.port}/pending-headers"
         encoded = base64.urlsafe_b64encode(media_url.encode()).decode()
         count = 12
+        MediaHandler.release_headers.clear()
         with MediaHandler.pending_header_lock:
             MediaHandler.pending_header_requests = 0
 
@@ -194,10 +195,10 @@ class MediaSocketCleanupTests(unittest.TestCase):
             self.assertEqual(seen, count, "not all upstream headers were pending")
         finally:
             for conn in clients:
-                if conn.sock:
-                    # An RST is distinguishable from a valid half-close.
+                if reset and conn.sock:
                     conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
                                          struct.pack("ii", 1, 0))
+                # Without SO_LINGER, close sends an ordinary FIN.
                 conn.close()
 
         try:
@@ -213,6 +214,12 @@ class MediaSocketCleanupTests(unittest.TestCase):
                                  "disconnected requests retried upstream")
         finally:
             MediaHandler.release_headers.set()
+
+    def test_reset_client_does_not_wait_for_upstream_headers(self):
+        self.close_while_upstream_headers_pending(reset=True)
+
+    def test_closed_client_does_not_wait_for_upstream_headers(self):
+        self.close_while_upstream_headers_pending(reset=False)
 
     def test_stalled_upstream_body_closes_stream(self):
         before = len(os.listdir(self.fd_path))
