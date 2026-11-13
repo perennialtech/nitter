@@ -4,7 +4,7 @@ build: css
 	go build -trimpath -o nitter ./cmd/nitter
 
 css:
-	sassc -I src/sass/include src/sass/index.scss public/css/style.css
+	sassc -I sass/include sass/index.scss public/css/style.css
 
 # The gates CI runs.
 check:
