@@ -132,9 +132,9 @@ Images are published to `ghcr.io/perennialtech/nitter` after successful CI on
 `master`. The `latest` and `master` tags, and full commit-SHA tags, support both
 `linux/amd64` and `linux/arm64`. Pull request builds do not publish images.
 
-Nitter fetches profiles, RSS timelines, media tabs, search, followers and
-reposters from the public [FxTwitter API](https://docs.fxembed.com/api/)
-first. Everything else, and any FxTwitter request that fails, uses account
+Nitter fetches profiles, RSS timelines, media tabs, posts and their replies,
+search, followers and reposters from the public
+[FxTwitter API](https://docs.fxembed.com/api/) first. Everything else, and any FxTwitter request that fails, uses account
 sessions from `sessions.jsonl`; without that file only the FxTwitter-backed
 pages work. To create it, follow the upstream
 [session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens).

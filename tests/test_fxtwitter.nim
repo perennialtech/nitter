@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[options, strutils, times, unittest]
+import std/[options, sequtils, strutils, times, unittest]
 import packedjson
 import ../src/[types, fxtwitter, apistats]
 
@@ -137,3 +137,43 @@ suite "API call stats":
     recordCall("fx", "profile", "ok")
     recordCall("sessions", "UserTweets", "limited")
     check formatApiStats() == "fx profile ok=2, sessions UserTweets limited=1"
+
+proc post(id, user: string; replyTo = ""): string =
+  let reply = if replyTo.len > 0: """{"screen_name": "x", "status": """" & replyTo & """"}"""
+              else: "null"
+  """{"type": "status", "id": """" & id & """", "created_timestamp": 1794514608,
+      "author": {"type": "profile", "id": """" & user & """", "screen_name": "u""" & user &
+      """", "name": "u", "raw_description": {"text": "", "facets": []}},
+      "replying_to": """ & reply & """,
+      "raw_text": {"text": "post """ & id & """", "display_text_range": [0, 7], "facets": []}}"""
+
+suite "FxTwitter conversations":
+  # Thread order as FxTwitter returns it: parent, root, then the focal post.
+  let js = parseJson("""{"code": 200, "cursor": {"bottom": "next"},
+    "status": """ & post("30", "1", "20") & """,
+    "thread": [""" & post("20", "2", "10") & ", " & post("10", "1") & ", " & post("30", "1", "20") & """],
+    "replies": [""" &
+      post("31", "1", "30") & ", " & post("32", "1", "31") & ", " &
+      post("40", "3", "30") & ", " & post("41", "1", "40") & ", " &
+      post("50", "4", "30") & "]}")
+
+  test "ancestors are ordered from the root":
+    let conv = parseFxConversation(js)
+    check conv.tweet.id == 30
+    check conv.before.content.mapIt(it.id) == @[10'i64, 20]
+
+  test "the author's continuation becomes the self-thread":
+    let conv = parseFxConversation(js)
+    check conv.after.content.mapIt(it.id) == @[31'i64, 32]
+
+  test "replies regroup into chains":
+    let conv = parseFxConversation(js)
+    check conv.replies.beginning
+    check conv.replies.bottom == "next"
+    check conv.replies.content.mapIt(it.content.mapIt(it.id)) == @[@[40'i64, 41], @[50'i64]]
+
+  test "later pages have no self-thread":
+    let conv = parseFxConversation(js, after = "c")
+    check conv.after.content.len == 0
+    check not conv.replies.beginning
+    check conv.replies.content.len == 3
