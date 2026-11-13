@@ -50,7 +50,6 @@ func requestParams(r *http.Request) url.Values {
 type navbarData struct {
 	Title, RSS, Canonical, SettingsURL string
 	ShowNotes                          bool
-	LP                                 template.HTML
 }
 
 func renderNavbar(cfg *config.Config, r *http.Request, rss, canonical string) template.HTML {
@@ -71,7 +70,6 @@ func renderNavbar(cfg *config.Config, r *http.Request, rss, canonical string) te
 		Canonical:   canonical,
 		SettingsURL: "/settings?referer=" + utils.EncodeURL(path),
 		ShowNotes:   cfg.ShowCommunityNotesNav && !cfg.GuestAuth,
-		LP:          template.HTML(lpSVG),
 	})
 }
 

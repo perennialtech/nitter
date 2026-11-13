@@ -68,18 +68,6 @@ nav {
   }
 }
 
-.lp {
-  height: 14px;
-  display: inline-block;
-  position: relative;
-  top: 2px;
-  fill: var(--fg_nav);
-
-  &:hover {
-    fill: var(--accent_light);
-  }
-}
-
 .icon-info {
   margin: 0 -3px;
 }

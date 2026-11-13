@@ -1,15 +1,11 @@
 # Nitter
 
-> [!NOTE]
-> On 24 August 2026, cease and desist letters were sent by X Corp. demanding a permanent takedown of Nitter instances and the project's repository. \
-> **UPDATE 10 October 2026:** I'm seeking funding and legal help. See [nitter.net](https://nitter.net) for more details.
-
 A free and open source alternative Twitter front-end focused on privacy and
 performance. \
 Inspired by the [Invidious](https://github.com/iv-org/invidious) project.
 
 [![Build and publish OCI images](https://github.com/perennialtech/nitter/actions/workflows/build-docker.yml/badge.svg)](https://github.com/perennialtech/nitter/actions/workflows/build-docker.yml)
-[![License](https://img.shields.io/github/license/zedeus/nitter?style=flat)](#license)
+[![License](https://img.shields.io/github/license/perennialtech/nitter?style=flat)](LICENSE)
 
 ## Features
 
@@ -22,30 +18,11 @@ available under **Preferences → Theme**. Prebuilt images are published to
 - All requests go through the backend, client never talks to Twitter
 - Prevents Twitter from tracking your IP or JavaScript fingerprint
 - Uses Twitter's unofficial API (no developer account required)
-- Lightweight (for [@nim_lang](https://nitter.net/nim_lang), 60KB vs 784KB from twitter.com)
+- Lightweight
 - RSS feeds (instance-specific, often disabled due to abuse)
 - Themes
 - Mobile support (responsive design)
 - AGPLv3 licensed, no proprietary instances permitted
-
-## Roadmap
-
-- ~~Embeds~~ (see https://github.com/zedeus/nitter/wiki/Embeds-guide)
-- Account system with timeline support
-
-## Donations
-
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/zedeus)
-[![Patreon](https://img.shields.io/badge/Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://patreon.com/nitter)
-[![Liberapay](https://img.shields.io/badge/Liberapay-F6C915?style=for-the-badge&logo=liberapay&logoColor=black)](https://liberapay.com/zedeus)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/zedeus)
-
-**BTC**: bc1qpqpzjkcpgluhzf7x9yqe7jfe8gpfm5v08mdr55<br>
-**ETH**: 0x24a0DB59A923B588c7A5EBd0dBDFDD1bCe9c4460<br>
-**XMR**: 42hKayRoEAw4D6G6t8mQHPJHQcXqofjFuVfavqKeNMNUZfeJLJAcNU19i1bGdDvcdN6romiSscWGWJCczFLe9RFhM3d1zpL<br>
-**SOL**: FF5bheiD5AqPEdc3eyjymJ8AoMRF1hS78Ht6FiSZZF1t<br>
-**$Nitter**: 4fSxCKc91ELQYVdv3tmHW8R15KoALPwEngyoQe1Xpump<br>
-**ZEC**: u1vndfqtzyy6qkzhkapxelel7ams38wmfeccu3fdpy2wkuc4erxyjm8ncjhnyg747x6t0kf0faqhh2hxyplgaum08d2wnj4n7cyu9s6zhxkqw2aef4hgd4s6vh5hpqvfken98rg80kgtgn64ff70djy7s8f839z00hwhuzlcggvefhdlyszkvwy3c7yw623vw3rvar6q6evd3xcvveypt
 
 ## Resources
 
@@ -71,10 +48,6 @@ Using an instance of Nitter (hosted on a VPS for example), you can browse
 Twitter without JavaScript while retaining your privacy. In addition to
 respecting your privacy, Nitter is on average around 15 times lighter than
 Twitter, and in most cases serves pages faster (eg. timelines load 2-4x faster).
-
-In the future a simple account system will be added that lets you follow Twitter
-users, allowing you to have a clean chronological timeline without needing a
-Twitter account.
 
 ## Screenshot
 
@@ -143,7 +116,7 @@ cp nitter.example.conf nitter.conf
 ```
 
 If you're using the prebuilt image without a local clone, download
-[`nitter.example.conf`](https://raw.githubusercontent.com/zedeus/nitter/master/nitter.example.conf)
+[`nitter.example.conf`](https://raw.githubusercontent.com/perennialtech/nitter/master/nitter.example.conf)
 and save it as `nitter.conf` instead.
 
 To build and run Nitter in Docker:
@@ -217,8 +190,3 @@ lines). If you're running the Docker image, you can do this:
 ## Contributing
 
 For build and test instructions, see [AGENTS.md](AGENTS.md).
-
-## Contact
-
-Feel free to join our [Matrix channel](https://matrix.to/#/#nitter:matrix.org).
-You can email me at zedeus@pm.me if you wish to contact me personally.

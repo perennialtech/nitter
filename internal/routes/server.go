@@ -23,7 +23,7 @@ import (
 
 const (
 	instancesURL = "https://github.com/zedeus/nitter/wiki/Instances"
-	issuesURL    = "https://github.com/zedeus/nitter/issues"
+	issuesURL    = "https://github.com/perennialtech/nitter/issues"
 )
 
 // New builds the handler for every nitter route. Routes are tried in

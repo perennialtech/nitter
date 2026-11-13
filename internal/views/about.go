@@ -19,7 +19,6 @@ const commitURL = "https://github.com/perennialtech/nitter/commit/"
 
 var (
 	aboutHTML     template.HTML
-	lpSVG         string
 	embedResizeJS template.JS
 	version       string
 	versionLink   string
@@ -49,19 +48,14 @@ func init() {
 	}
 }
 
-// Init loads the static files the views embed: the rendered about page,
-// the Liberapay logo and the embed resize script. Call once at startup
-// with the configured staticDir.
+// Init loads the static files the views embed: the rendered about page
+// and the embed resize script. Call once at startup with the configured
+// staticDir.
 func Init(staticDir string) error {
-	lp, err := os.ReadFile(filepath.Join(staticDir, "lp.svg"))
-	if err != nil {
-		return err
-	}
 	js, err := os.ReadFile(filepath.Join(staticDir, "js", "embedResize.js"))
 	if err != nil {
 		return err
 	}
-	lpSVG = string(lp)
 	embedResizeJS = template.JS(js)
 
 	mdPath := filepath.Join(staticDir, "md", "about.md")
