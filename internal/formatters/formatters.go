@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	xhtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"github.com/perennialtech/nitter/internal/config"
 	"github.com/perennialtech/nitter/internal/prefs"
@@ -76,7 +77,7 @@ func ShortLink(text string) string {
 // replaced by its URL (shortened if shorten is set).
 func StripHTML(text string, shorten bool) string {
 	nodes, err := xhtml.ParseFragment(strings.NewReader(text), &xhtml.Node{
-		Type: xhtml.ElementNode, Data: "div",
+		Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div,
 	})
 	if err != nil {
 		return text
