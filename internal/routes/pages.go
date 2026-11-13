@@ -149,7 +149,7 @@ func (s *Server) communityRoutes() {
 			views.RenderTimelineUsers(types.Result[types.User]{Content: mods}, c.prefs(), c.r.URL.EscapedPath()), err
 	})
 	add("/hashtag/@tag", func(c *ctx, cm types.Community) (string, template.HTML, template.HTML, error) {
-		tag := c.param("tag")
+		tag, _ := url.PathUnescape(c.param("tag"))
 		tl, err := api.GraphCommunityHashtags(c.r.Context(), cm.ID, tag, c.cursor())
 		body, err := tweets(c, tl, err)
 		return cm.Name + " - #" + tag, views.RenderHashtagHeader(cm, tag), body, err
