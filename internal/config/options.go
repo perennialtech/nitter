@@ -189,12 +189,6 @@ var Options = []Option{
 			"guests can't load, such as community notes, are hidden."),
 	integer("Config", "guestPoolSize", func(c *Config) *int { return &c.GuestPoolSize }, 1,
 		"Guest tokens to keep activated at once with guestAuth. Less than 1 means 1."),
-	str("Config", "proxy", func(c *Config) *string { return &c.Proxy }, "",
-		"Proxy for requests to the Twitter API and FxTwitter, as an http:// or "+
-			"https:// URL such as http://127.0.0.1:3128. Proxied media is fetched "+
-			"directly. SOCKS proxies aren't supported. Empty means no proxy."),
-	str("Config", "proxyAuth", func(c *Config) *string { return &c.ProxyAuth }, "",
-		"Credentials for proxy, as username:password. They replace any in the proxy URL."),
 	str("Config", "apiProxy", func(c *Config) *string { return &c.APIProxy }, "",
 		"Address of a nitter-proxy instance, such as localhost:7000, that "+
 			"forwards Twitter API requests: https://api.x.com/... is requested as "+
@@ -229,6 +223,9 @@ type EnvVar struct {
 	Doc     string
 	// Secret marks values that grant access and must be kept private.
 	Secret bool
+	// Stdlib marks the standard variables Go's standard library reads
+	// itself, rather than Nitter through Value.
+	Stdlib bool
 }
 
 // Value is the variable's value, or Default when it is unset or empty.
@@ -249,10 +246,26 @@ var (
 	GuestBearerToken = EnvVar{Name: "NITTER_GUEST_BEARER_TOKEN", Secret: true,
 		Doc: "Bearer token that guest requests authenticate with, without the " +
 			"\"Bearer \" prefix. Required when guestAuth is on, and ignored otherwise."}
+
+	// Every outbound client uses http.ProxyFromEnvironment, which reads
+	// these.
+	httpsProxy = EnvVar{Name: "HTTPS_PROXY", Stdlib: true,
+		Doc: "Proxy for HTTPS requests, which is every request to X, FxTwitter " +
+			"and twimg media, as a URL such as http://127.0.0.1:3128 or " +
+			"socks5://127.0.0.1:1080; http:// is assumed without a scheme. Put " +
+			"credentials in it as user:password@, and keep it secret then. " +
+			"https_proxy works too. Empty sends requests directly."}
+	httpProxy = EnvVar{Name: "HTTP_PROXY", Stdlib: true,
+		Doc: "Proxy for plain HTTP requests, such as those to a non-local apiProxy, " +
+			"in the same form as HTTPS_PROXY. http_proxy works too."}
+	noProxy = EnvVar{Name: "NO_PROXY", Stdlib: true,
+		Doc: "Comma-separated hosts, domains (.example.com), IP addresses and " +
+			"CIDR ranges to reach without the proxy; * matches everything. Requests " +
+			"to localhost and loopback addresses never use the proxy. no_proxy works too."}
 )
 
 // EnvVars lists every environment variable Nitter reads.
-var EnvVars = []EnvVar{ConfFile, SessionsFile, GuestBearerToken}
+var EnvVars = []EnvVar{ConfFile, SessionsFile, GuestBearerToken, httpsProxy, httpProxy, noProxy}
 
 func (o Option) apply(c *Config, f File) error {
 	v := f[o.Section][o.Key]

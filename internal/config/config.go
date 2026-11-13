@@ -34,8 +34,6 @@ type Config struct {
 	EnableRSSList           bool
 	EnableRSSCommunityNotes bool
 	EnableDebug             bool
-	Proxy                   string
-	ProxyAuth               string
 	APIProxy                string
 	DisableTid              bool
 	MaxConcurrentReqs       int
