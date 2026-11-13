@@ -19,6 +19,9 @@ func (s *Server) searchRoutes() {
 		if len(q) > 500 {
 			return c.fail(http.StatusBadRequest, "Search input too long.")
 		}
+		if path := utils.PastedTwitterLink(q); path != "" {
+			return c.redirect(path)
+		}
 		ctx, p := c.r.Context(), c.prefs()
 		title := "Search"
 		if q != "" {

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -149,6 +150,26 @@ func LocalizeTwitterLink(raw string) string {
 		out += "#" + u.EscapedFragment()
 	}
 	return out
+}
+
+// PastedTwitterLink returns the path on this instance for a search query
+// that is a twitter.com or x.com page link, with or without its scheme, and
+// "" for any other query, including a bare host.
+func PastedTwitterLink(q string) string {
+	q = strings.TrimSpace(q)
+	if q == "" || strings.ContainsFunc(q, unicode.IsSpace) {
+		return ""
+	}
+	if !strings.Contains(q, "://") {
+		q = HTTPS + q
+	}
+	if u, err := url.Parse(q); err != nil || strings.Trim(u.Path, "/") == "" {
+		return ""
+	}
+	if path := LocalizeTwitterLink(q); path != q {
+		return path
+	}
+	return ""
 }
 
 // ExtractUsername returns the username from a /<user>/status/<id> URL.

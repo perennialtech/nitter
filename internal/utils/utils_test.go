@@ -47,3 +47,29 @@ func TestIsTwitterURL(t *testing.T) {
 		}
 	}
 }
+
+func TestPastedTwitterLink(t *testing.T) {
+	for q, want := range map[string]string{
+		"https://x.com/jack/status/20":                "/jack/status/20",
+		"  https://twitter.com/jack/status/20?s=46  ": "/jack/status/20?s=46",
+		"x.com/jack": "/jack",
+		"mobile.twitter.com/jack/status/20/photo/1": "/jack/status/20/photo/1",
+		"https://x.com/i/lists/123":                 "/i/lists/123",
+		"https://x.com/search?q=nitter":             "/search?q=nitter",
+		"x.com":                                     "",
+		"https://x.com/":                            "",
+		"https://x.com/?s=1":                        "",
+		"jack":                                      "",
+		"@jack":                                     "",
+		"from:jack x.com/jack":                      "",
+		"https://x.com/jack/status/20 and more":     "",
+		"https://example.com/jack/status/20":        "",
+		"https://x.com.evil.com/jack":               "",
+		"https://x.com//evil.com":                   "",
+		"ftp://x.com/jack":                          "",
+	} {
+		if got := PastedTwitterLink(q); got != want {
+			t.Errorf("PastedTwitterLink(%q) = %q, want %q", q, got, want)
+		}
+	}
+}
