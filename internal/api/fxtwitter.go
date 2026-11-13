@@ -408,7 +408,9 @@ func fxUser(ctx context.Context, handle string) (types.User, error) {
 		if getStr(js.Get("reason")) == "suspended" {
 			return types.User{Suspended: true}, nil
 		}
-		return types.User{}, nil
+		// FxTwitter also answers 404 for some existing accounts, depending on
+		// the address asking, so only the sessions can say a user doesn't exist.
+		return types.User{}, &fxError{"FxTwitter profile: 404 Not Found"}
 	}
 	return parseFxUser(js.Get("user")), nil
 }

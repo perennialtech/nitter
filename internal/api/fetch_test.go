@@ -196,7 +196,7 @@ func TestRetriesUseAnotherAttempt(t *testing.T) {
 func TestFxTwitterFirstThenSessions(t *testing.T) {
 	addCookieSessions(t, 1)
 	var fx, sessions atomic.Int32
-	fxStatus := 200
+	fxStatus, fxReason := 200, ""
 	fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Host {
 		case "api.fxtwitter.com":
@@ -205,7 +205,8 @@ func TestFxTwitterFirstThenSessions(t *testing.T) {
 				t.Errorf("fx request %s %v", r.URL, r.Header)
 			}
 			w.WriteHeader(fxStatus)
-			w.Write([]byte(`{"code":` + strconv.Itoa(fxStatus) + `,"user":{"id":"12","screen_name":"jack"}}`))
+			w.Write([]byte(`{"code":` + strconv.Itoa(fxStatus) + `,"reason":"` + fxReason +
+				`","user":{"id":"12","screen_name":"jack"}}`))
 		case "x.com":
 			sessions.Add(1)
 			if !strings.HasSuffix(r.URL.Path, "/UserByScreenName") {
@@ -227,6 +228,14 @@ func TestFxTwitterFirstThenSessions(t *testing.T) {
 	}
 	if !strings.Contains(formatAPIStats(), "fx profile error=1") {
 		t.Fatalf("stats: %s", formatAPIStats())
+	}
+	fxStatus = 404
+	if _, err := GraphUser(context.Background(), "jack"); err != nil || sessions.Load() != 2 {
+		t.Fatalf("an FxTwitter 404 must fall back to the sessions: %v, sessions %d", err, sessions.Load())
+	}
+	fxReason = "suspended"
+	if u, err := GraphUser(context.Background(), "jack"); err != nil || !u.Suspended || sessions.Load() != 2 {
+		t.Fatalf("FxTwitter must answer for a suspended user: %+v, %v, sessions %d", u, err, sessions.Load())
 	}
 }
 
