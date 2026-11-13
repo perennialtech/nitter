@@ -10,6 +10,7 @@ import re
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -71,6 +72,7 @@ class StalledApiServer(ThreadingHTTPServer):
     daemon_threads = True
 
 
+@unittest.skipUnless(sys.platform == "linux", "Requires Linux /proc file descriptors")
 class ApiResourceCleanupTests(unittest.TestCase):
     def test_abandoned_api_requests_release_sockets(self):
         with tempfile.TemporaryDirectory(prefix="nitter-api-cleanup-") as temp:
