@@ -178,10 +178,11 @@ func parseFxUser(js gjson.Result) types.User {
 
 func parseFxVideo(js gjson.Result) types.Video {
 	v := types.Video{
-		Available:  true,
-		Thumb:      fxImage(getStr(js.Get("thumbnail_url"))),
-		Title:      getStr(js.Get("altText")),
-		DurationMs: int(getFloat(js.Get("duration")) * 1000),
+		Available:    true,
+		Thumb:        fxImage(getStr(js.Get("thumbnail_url"))),
+		Title:        getStr(js.Get("altText")),
+		DurationMs:   int(getFloat(js.Get("duration")) * 1000),
+		PlaybackType: types.VideoM3u8,
 	}
 	for _, f := range items(js.Get("formats")) {
 		u := getStr(f.Get("url"))

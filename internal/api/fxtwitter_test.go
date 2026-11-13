@@ -121,6 +121,9 @@ func TestFxVideo(t *testing.T) {
 		t.Fatalf("media %+v", tw.Media)
 	}
 	v := tw.Media[0].Video
+	if v.PlaybackType != types.VideoM3u8 {
+		t.Errorf("playback type = %q, want %q", v.PlaybackType, types.VideoM3u8)
+	}
 	if v.Thumb != "amplify_video_thumb/1/img/b.jpg" || v.DurationMs != 29700 || len(v.Variants) != 2 ||
 		v.Variants[0].ContentType != types.VideoM3u8 || v.Variants[1].Bitrate != 632000 || v.Variants[1].Resolution != 400 {
 		t.Fatalf("video %+v", v)
