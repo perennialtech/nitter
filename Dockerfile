@@ -1,5 +1,4 @@
 FROM golang:1.27-alpine AS build
-LABEL maintainer="setenforce@protonmail.com"
 
 # git lets go build stamp the commit shown on the about page.
 RUN apk add --no-cache git make sassc
