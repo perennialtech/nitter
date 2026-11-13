@@ -360,8 +360,8 @@ proc initSessionPool*(cfg: Config; path: string) =
     quit 1
 
   if not fileExists(path):
-    log "ERROR: ", path, " not found. This file is required to authenticate API requests."
-    quit 1
+    log path, " not found, serving only what FxTwitter can"
+    return
 
   log "parsing JSONL account sessions file: ", path
   for line in path.lines:
