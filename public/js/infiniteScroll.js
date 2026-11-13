@@ -9,6 +9,18 @@ function getLoadMore(doc) {
   return doc.querySelector(".show-more:not(.timeline-item)");
 }
 
+// Replaces the "Load more" link with the footer a server-rendered page
+// shows at the end of a timeline.
+function showTimelineEnd(loadMore, masonry) {
+  const footer = document.createElement("div");
+  footer.className = masonry ? "timeline-footer masonry-visible" : "timeline-footer";
+  const end = document.createElement("h2");
+  end.className = "timeline-end";
+  end.textContent = "No more items";
+  footer.appendChild(end);
+  loadMore.replaceWith(footer);
+}
+
 function getHrefs(selector) {
   return new Set([...document.querySelectorAll(selector)].map(el => el.getAttribute("href")));
 }
@@ -184,10 +196,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     fetch(url)
       .then(r => {
+        if (r.status === 204) return null;
         if (r.status > 299) throw new Error("error");
         return r.text();
       })
       .then(responseText => {
+        // 204: the previous page was the last one
+        if (responseText === null) {
+          isTweet ? loadMore.remove() : showTimelineEnd(loadMore, masonry);
+          loading = false;
+          return;
+        }
         const doc = new DOMParser().parseFromString(responseText, "text/html");
         loadMore.remove();
 

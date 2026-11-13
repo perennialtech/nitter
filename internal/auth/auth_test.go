@@ -465,6 +465,25 @@ func TestRateLimitedSessionsAreSkipped(t *testing.T) {
 	}
 }
 
+func TestLoneReadySessionIsAlwaysFound(t *testing.T) {
+	setup(t, 1, 2)
+	ready := &Session{Kind: Cookie, AuthToken: "ready", Ct0: "c"}
+	mu.Lock()
+	for range 19 {
+		sessionPool = append(sessionPool, &Session{Kind: Cookie, AuthToken: "busy", Ct0: "c", pending: 3})
+	}
+	sessionPool = append(sessionPool, ready)
+	mu.Unlock()
+
+	for range 200 {
+		s, err := GetSession(request)
+		if err != nil || s != ready {
+			t.Fatalf("got %v, %v; want the one ready session", s, err)
+		}
+		Release(s)
+	}
+}
+
 func TestConcurrentAcquireRelease(t *testing.T) {
 	setup(t, 1, 2)
 	mu.Lock()
