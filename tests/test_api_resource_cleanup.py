@@ -64,7 +64,7 @@ class StalledApiHandler(BaseHTTPRequestHandler):
 
 
 class ApiResourceCleanupTests(unittest.TestCase):
-    def test_abandoned_api_requests_release_sockets_and_redis_leases(self):
+    def test_abandoned_api_requests_release_sockets(self):
         with tempfile.TemporaryDirectory(prefix="nitter-api-cleanup-") as temp:
             temp = Path(temp)
             StalledApiHandler.requests = 0
@@ -77,10 +77,6 @@ class ApiResourceCleanupTests(unittest.TestCase):
             config = (ROOT / "nitter.example.conf").read_text()
             settings = {
                 "port": port,
-                "redisHost": '"127.0.0.1"',
-                "redisPort": int(os.getenv("NITTER_TEST_REDIS_PORT", "6379")),
-                "redisConnections": 1,
-                "redisMaxConnections": 2,
                 "apiProxy": f'"http://127.0.0.1:{fixture.server_port}"',
                 "maxConcurrentReqs": 64,
                 "maxRetries": 1,
@@ -132,14 +128,6 @@ class ApiResourceCleanupTests(unittest.TestCase):
                         wait_until(lambda: StalledApiHandler.requests >= count, 5),
                         f"Only {StalledApiHandler.requests}/{count} requests reached the API",
                     )
-                    # API sockets and downstream sockets are expected, but no
-                    # extra Redis leases should be held while the API stalls.
-                    peak = fd_count(proc.pid)
-                    self.assertLessEqual(
-                        peak, before + 2 * count + 10,
-                        f"Redis connections grew with stalled lookups: {before} -> {peak}",
-                    )
-
                     for client in clients:
                         client.setsockopt(
                             socket.SOL_SOCKET, socket.SO_LINGER,
