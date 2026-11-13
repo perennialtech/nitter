@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
 Requirements:
-  pip install -r tools/requirements.txt
+  uv (https://docs.astral.sh/uv/)
 
 Usage:
-  python3 tools/create_session_browser.py <username> <password> [totp_seed] [--append sessions.jsonl] [--headless]
+  uv run --project tools tools/create_session_browser.py <username> <password> [totp_seed] [--append sessions.jsonl] [--headless]
 
 Examples:
   # Output to terminal
-  python3 tools/create_session_browser.py myusername mypassword TOTP_SECRET
+  uv run --project tools tools/create_session_browser.py myusername mypassword TOTP_SECRET
 
   # Append to sessions.jsonl
-  python3 tools/create_session_browser.py myusername mypassword TOTP_SECRET --append sessions.jsonl
+  uv run --project tools tools/create_session_browser.py myusername mypassword TOTP_SECRET --append sessions.jsonl
 
   # Headless mode (may increase detection risk)
-  python3 tools/create_session_browser.py myusername mypassword TOTP_SECRET --headless
+  uv run --project tools tools/create_session_browser.py myusername mypassword TOTP_SECRET --headless
 
 Output:
   {"kind": "cookie", "username": "...", "id": "...", "auth_token": "...", "ct0": "..."}

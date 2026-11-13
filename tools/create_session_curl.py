@@ -7,17 +7,17 @@ create_session_browser.py instead.
 This script is kept for reference but will fail with current X API defenses.
 
 Requirements:
-  pip install curl_cffi pyotp
+  uv (https://docs.astral.sh/uv/)
 
 Usage:
-  python3 tools/create_session_curl.py <username> <password> [totp_seed] [--append sessions.jsonl]
+  uv run --project tools tools/create_session_curl.py <username> <password> [totp_seed] [--append sessions.jsonl]
 
 Examples:
   # Output to terminal
-  python3 tools/create_session_curl.py myusername mypassword TOTP_SECRET
+  uv run --project tools tools/create_session_curl.py myusername mypassword TOTP_SECRET
 
   # Append to sessions.jsonl
-  python3 tools/create_session_curl.py myusername mypassword TOTP_SECRET --append sessions.jsonl
+  uv run --project tools tools/create_session_curl.py myusername mypassword TOTP_SECRET --append sessions.jsonl
 
 Output:
   {"kind": "cookie", "username": "...", "id": "...", "auth_token": "...", "ct0": "..."}

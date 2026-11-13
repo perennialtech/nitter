@@ -101,30 +101,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: Cache pipx (poetry)
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          path: |
-            ~/.local/pipx
-            ~/.local/bin
-          key: pipx-poetry-${{ runner.os }}
-
-      - name: Install poetry
-        env:
-          PIPX_HOME: ~/.local/pipx
-          PIPX_BIN_DIR: ~/.local/bin
-        run: command -v poetry >/dev/null 2>&1 || pipx install poetry==2.2.1
-
-      - name: Setup Python (3.14) with Poetry cache
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.14"
-          cache: poetry
-          cache-dependency-path: tests/poetry.lock
+          version: "0.13.8"
+          enable-cache: true
+          cache-dependency-glob: tests/uv.lock
 
       - name: Install Python deps
         working-directory: tests
-        run: poetry sync
+        run: uv sync --locked
 
       - name: Download build artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -150,4 +136,4 @@ jobs:
         run: |
           ./nitter &
           cd tests
-          poetry run pytest -n2 --rs .
+          uv run --locked pytest -n2 --rs .
