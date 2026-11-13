@@ -2,6 +2,10 @@
 
 // Command nitter serves the Nitter front-end. It reads nitter.conf (or
 // $NITTER_CONF_FILE) and sessions.jsonl (or $NITTER_SESSIONS_FILE).
+//
+// "nitter healthcheck" asks the instance configured in nitter.conf for
+// /.health and exits non-zero unless it answers 200 OK, for container
+// healthchecks in images with no shell or HTTP client.
 package main
 
 import (
@@ -29,7 +33,11 @@ import (
 
 func main() {
 	log.SetFlags(0)
-	if err := run(); err != nil {
+	cmd := run
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		cmd = healthcheck
+	}
+	if err := cmd(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -39,6 +47,28 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// healthcheck checks the server on the configured port. /.health only
+// reads the session pools, so it doesn't depend on Redis or upstream.
+func healthcheck() error {
+	cfg, err := config.Load(getenv("NITTER_CONF_FILE", "./nitter.conf"))
+	if err != nil {
+		return err
+	}
+	host := cfg.Address
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+	resp, err := http.Get("http://" + net.JoinHostPort(host, strconv.Itoa(cfg.Port)) + "/.health")
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("/.health: %s", resp.Status)
+	}
+	return nil
 }
 
 func run() error {
