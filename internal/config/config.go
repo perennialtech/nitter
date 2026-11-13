@@ -56,12 +56,7 @@ type Config struct {
 
 	RssCacheTime  int
 	ListCacheTime int
-
-	RedisHost     string
-	RedisPort     int
-	RedisConns    int
-	RedisMaxConns int
-	RedisPassword string
+	CacheMaxMB    int
 
 	// Preferences holds the raw [Preferences] section, which overrides the
 	// default value of each preference.
@@ -211,11 +206,7 @@ func FromFile(f File) (*Config, error) {
 
 		ListCacheTime: g.int("Cache", "listMinutes", 120),
 		RssCacheTime:  g.int("Cache", "rssMinutes", 10),
-		RedisHost:     g.str("Cache", "redisHost", "localhost"),
-		RedisPort:     g.int("Cache", "redisPort", 6379),
-		RedisConns:    g.int("Cache", "redisConnections", 20),
-		RedisMaxConns: g.int("Cache", "redisMaxConnections", 30),
-		RedisPassword: g.str("Cache", "redisPassword", ""),
+		CacheMaxMB:    g.int("Cache", "maxMegabytes", 128),
 
 		HmacKey:                 g.str("Config", "hmacKey", "secretkey"),
 		Base64Media:             g.bool("Config", "base64Media", false),
@@ -256,6 +247,9 @@ func FromFile(f File) (*Config, error) {
 	}
 	if g.err != nil {
 		return nil, g.err
+	}
+	if c.CacheMaxMB <= 0 {
+		return nil, fmt.Errorf("Cache.maxMegabytes: must be positive, got %d", c.CacheMaxMB)
 	}
 	return c, nil
 }

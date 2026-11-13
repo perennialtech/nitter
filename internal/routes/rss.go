@@ -17,7 +17,7 @@ import (
 	"github.com/perennialtech/nitter/internal/views"
 )
 
-func redisKey(page, name, cursor string) string {
+func rssKey(page, name, cursor string) string {
 	key := page + ":" + name
 	if cursor != "" {
 		key += ":" + cursor
@@ -108,18 +108,8 @@ func (c *ctx) respRss(rss types.Rss, page string) error {
 
 // cachedRss serves the feed cached at key, or builds, caches and serves it.
 func (c *ctx) cachedRss(key, page string, build func() (types.Rss, error)) error {
-	ctx := c.r.Context()
-	rss, err := cache.Rss(ctx, key)
+	rss, err := cache.Rss(c.r.Context(), key, build)
 	if err != nil {
-		return err
-	}
-	if rss.Cursor != "" {
-		return c.respRss(rss, page)
-	}
-	if rss, err = build(); err != nil {
-		return err
-	}
-	if err := cache.CacheRss(ctx, key, rss); err != nil {
 		return err
 	}
 	return c.respRss(rss, page)
@@ -140,7 +130,7 @@ func (s *Server) rssRoutes() {
 			return c.fail(http.StatusBadRequest, "Only Tweet searches are allowed for RSS feeds.")
 		}
 		cursor := c.cursor()
-		key := redisKey("search", hashString(query.URL(q)), cursor)
+		key := rssKey("search", hashString(query.URL(q)), cursor)
 		return c.cachedRss(key, "Search", func() (types.Rss, error) {
 			tweets, err := api.GraphTweetSearch(c.r.Context(), q, cursor)
 			if err != nil {
@@ -160,7 +150,7 @@ func (s *Server) rssRoutes() {
 			if !s.cfg.EnableRSSCommunityNotes || s.cfg.GuestAuth {
 				return disabled(c)
 			}
-			return c.cachedRss(redisKey("communitynotes", tab, ""), "Community Notes", func() (types.Rss, error) {
+			return c.cachedRss(rssKey("communitynotes", tab, ""), "Community Notes", func() (types.Rss, error) {
 				return c.communityNotesRss(tab)
 			})
 		})
@@ -174,7 +164,7 @@ func (s *Server) rssRoutes() {
 		if !s.cfg.EnableRSSUserTweets {
 			return disabled(c)
 		}
-		return c.cachedRss(redisKey("twitter", name, c.cursor()), "User", func() (types.Rss, error) {
+		return c.cachedRss(rssKey("twitter", name, c.cursor()), "User", func() (types.Rss, error) {
 			return c.timelineRss(types.Query{Kind: types.QueryPosts, FromUser: []string{name}})
 		})
 	})
@@ -194,7 +184,7 @@ func (s *Server) rssRoutes() {
 		if tab == "search" {
 			searchKey = ":" + hashString(query.URL(q))
 		}
-		return c.cachedRss(redisKey(tab, name+searchKey, c.cursor()), "User", func() (types.Rss, error) {
+		return c.cachedRss(rssKey(tab, name+searchKey, c.cursor()), "User", func() (types.Rss, error) {
 			return c.timelineRss(q)
 		})
 	})
@@ -226,7 +216,7 @@ func (s *Server) rssRoutes() {
 			return disabled(c)
 		}
 		id, cursor := c.param("id"), c.cursor()
-		return c.cachedRss(redisKey("lists", id, cursor), "List", func() (types.Rss, error) {
+		return c.cachedRss(rssKey("lists", id, cursor), "List", func() (types.Rss, error) {
 			list, err := cache.List(c.r.Context(), "", "", id)
 			if err != nil {
 				return types.Rss{}, err

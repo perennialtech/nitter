@@ -8,8 +8,6 @@ services:
     volumes:
       - ./nitter.conf:/src/nitter.conf:Z,ro
       - ./sessions.jsonl:/src/sessions.jsonl:Z,ro # See README.md for session setup
-    depends_on:
-      - nitter-redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/src/nitter", "healthcheck"]
@@ -22,25 +20,3 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-
-  nitter-redis:
-    image: redis:6-alpine
-    container_name: nitter-redis
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - nitter-redis:/data
-    restart: unless-stopped
-    healthcheck:
-      test: redis-cli ping
-      interval: 30s
-      timeout: 5s
-      retries: 2
-    user: "999:1000"
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-volumes:
-  nitter-redis:

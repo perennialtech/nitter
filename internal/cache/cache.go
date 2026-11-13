@@ -1,21 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package cache stores users, lists, photo rails, broadcasts, spaces,
-// communities and RSS feeds in Redis, fetching them from the API on a miss.
+// Package cache keeps users, lists, photo rails, broadcasts, spaces,
+// communities and RSS feeds in memory, fetching them from the API on a miss.
 package cache
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"hash/fnv"
-	"log"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/klauspost/compress/s2"
-	"github.com/redis/go-redis/v9"
+	"github.com/maypok86/otter/v2"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/perennialtech/nitter/internal/api"
 	"github.com/perennialtech/nitter/internal/config"
@@ -24,30 +21,39 @@ import (
 
 const baseCacheTime = time.Hour
 
+// entry is an s2-compressed JSON value and how long to keep it. Holding
+// bytes rather than values lets the cache weigh entries by size, and gives
+// every reader its own copy.
+type entry struct {
+	data []byte
+	ttl  time.Duration
+}
+
 var (
-	rdb           *redis.Client
+	entries       *otter.Cache[string, entry]
+	flights       singleflight.Group
 	rssCacheTime  time.Duration
 	listCacheTime time.Duration
 )
 
-// Init connects to Redis and checks the connection.
-func Init(ctx context.Context, cfg *config.Config) error {
+// Init creates the cache, holding at most cfg.CacheMaxMB megabytes of keys
+// and compressed values.
+func Init(cfg *config.Config) {
 	rssCacheTime = time.Duration(cfg.RssCacheTime) * time.Minute
 	listCacheTime = time.Duration(cfg.ListCacheTime) * time.Minute
-	rdb = redis.NewClient(&redis.Options{
-		Addr:         cfg.RedisHost + ":" + strconv.Itoa(cfg.RedisPort),
-		Password:     cfg.RedisPassword,
-		PoolSize:     cfg.RedisMaxConns,
-		MinIdleConns: cfg.RedisConns,
+	entries = newCache(uint64(cfg.CacheMaxMB) << 20)
+}
+
+func newCache(maxBytes uint64) *otter.Cache[string, entry] {
+	return otter.Must(&otter.Options[string, entry]{
+		MaximumWeight: maxBytes,
+		Weigher: func(key string, e entry) uint32 {
+			return uint32(len(key) + len(e.data))
+		},
+		ExpiryCalculator: otter.ExpiryWritingFunc(func(e otter.Entry[string, entry]) time.Duration {
+			return e.Value.ttl
+		}),
 	})
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		return err
-	}
-	// Keep the user ID buckets in Redis's compact hash encoding.
-	if err := rdb.ConfigSet(ctx, "hash-max-ziplist-entries", "1000").Err(); err != nil {
-		log.Printf("[cache] can't set hash-max-ziplist-entries: %v", err)
-	}
-	return nil
 }
 
 func encode(v any) []byte {
@@ -59,189 +65,166 @@ func encode(v any) []byte {
 	return s2.Encode(nil, data)
 }
 
-// decode reports whether data held a valid value. A bad entry is logged
-// and treated as a miss.
-func decode(data []byte, v any) bool {
+func decode(data []byte, v any) {
 	raw, err := s2.Decode(nil, data)
 	if err == nil {
 		err = json.Unmarshal(raw, v)
 	}
 	if err != nil {
-		log.Printf("[cache] decoding %T failed: %v", v, err)
-		return false
+		// The cache only holds what encode produced.
+		panic(err)
 	}
-	return true
 }
 
-// get returns the cached bytes for key, or nil on a miss.
-func get(ctx context.Context, key string) ([]byte, error) {
-	data, err := rdb.Get(ctx, key).Bytes()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
+func load(key string, v any) bool {
+	e, ok := entries.GetIfPresent(key)
+	if ok {
+		decode(e.data, v)
 	}
-	return data, err
+	return ok
 }
 
-func load(ctx context.Context, key string, v any) (bool, error) {
-	data, err := get(ctx, key)
-	if err != nil || data == nil {
-		return false, err
+func store(key string, ttl time.Duration, v any) {
+	entries.Set(key, entry{encode(v), ttl})
+}
+
+// flight is the outcome of a fetch shared by concurrent misses for a key.
+type flight struct {
+	data     []byte
+	canceled bool
+}
+
+// cached returns the value at key. On a miss it calls fetch and caches the
+// result for the duration fetch returns, unless that's zero. Concurrent
+// misses for a key share one fetch, made with the context of the request
+// that started it.
+func cached[T any](ctx context.Context, key string, fetch func() (T, time.Duration, error)) (T, error) {
+	var v T
+	if load(key, &v) {
+		return v, nil
 	}
-	return decode(data, v), nil
-}
-
-func store(ctx context.Context, key string, ttl time.Duration, v any) error {
-	return rdb.Set(ctx, key, encode(v), ttl).Err()
-}
-
-// User IDs are grouped into hash buckets, which Redis stores compactly up
-// to hash-max-ziplist-entries (set in Init).
-func uidKey(name string) string {
-	h := fnv.New64a()
-	h.Write([]byte(name))
-	return "pid:" + strconv.FormatUint(h.Sum64()%1_000_000, 10)
-}
-
-func userKey(name string) string { return "p:" + name }
-
-func cacheUserID(ctx context.Context, username, id string) error {
-	if username == "" || id == "" {
-		return nil
+	for {
+		res, err, _ := flights.Do(key, func() (any, error) {
+			// The previous fetch for key may have finished since the miss.
+			if e, ok := entries.GetIfPresent(key); ok {
+				return flight{data: e.data}, nil
+			}
+			v, ttl, err := fetch()
+			if err != nil {
+				return flight{canceled: ctx.Err() != nil}, err
+			}
+			data := encode(v)
+			if ttl > 0 {
+				entries.Set(key, entry{data, ttl})
+			}
+			return flight{data: data}, nil
+		})
+		f := res.(flight)
+		// When the request that started a fetch goes away, the fetch fails
+		// for every request sharing it. Those still waiting fetch again.
+		if f.canceled && ctx.Err() == nil {
+			continue
+		}
+		if err != nil {
+			return v, err
+		}
+		decode(f.data, &v)
+		return v, nil
 	}
-	name := strings.ToLower(username)
-	key := uidKey(name)
-	_, err := rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
-		p.HSet(ctx, key, name, id)
-		p.Expire(ctx, key, baseCacheTime)
-		return nil
-	})
-	return err
 }
 
-func CacheList(ctx context.Context, l types.List) error {
-	return store(ctx, "l:"+l.ID, listCacheTime, l)
-}
-
-func CachePhotoRail(ctx context.Context, rail types.PhotoRail, name string) error {
-	return store(ctx, "pr2:"+strings.ToLower(name), 2*baseCacheTime, rail)
-}
-
-func CacheUser(ctx context.Context, u types.User) error {
-	if u.Username == "" {
-		return nil
-	}
-	name := strings.ToLower(u.Username)
-	if err := cacheUserID(ctx, name, u.ID); err != nil {
-		return err
-	}
-	return store(ctx, userKey(name), baseCacheTime, u)
-}
+func userKey(name string) string   { return "p:" + strings.ToLower(name) }
+func userIDKey(name string) string { return "pid:" + strings.ToLower(name) }
 
 // UserID returns the ID for username, or "suspended" if the account is.
 func UserID(ctx context.Context, username string) (string, error) {
-	name := strings.ToLower(username)
-	id, err := rdb.HGet(ctx, uidKey(name), name).Result()
-	if err == nil {
-		return id, nil
-	}
-	if !errors.Is(err, redis.Nil) {
-		return "", err
-	}
-	u, err := api.GraphUser(ctx, username)
-	if err != nil {
-		return "", err
-	}
-	if u.Suspended {
-		return "suspended", nil
-	}
-	return u.ID, CacheUser(ctx, u)
+	return cached(ctx, userIDKey(username), func() (string, time.Duration, error) {
+		u, err := api.GraphUser(ctx, username)
+		switch {
+		case err != nil:
+			return "", 0, err
+		case u.Suspended:
+			return "suspended", 0, nil
+		case u.Username != "":
+			store(userKey(u.Username), baseCacheTime, u)
+		}
+		if u.ID == "" {
+			return "", 0, nil
+		}
+		return u.ID, baseCacheTime, nil
+	})
 }
 
 // User returns the cached profile for username. On a miss it's fetched if
 // fetch is set, and the zero User is returned otherwise.
 func User(ctx context.Context, username string, fetch bool) (types.User, error) {
-	var u types.User
-	if ok, err := load(ctx, userKey(strings.ToLower(username)), &u); ok || err != nil {
-		return u, err
-	}
 	if !fetch {
-		return types.User{}, nil
+		var u types.User
+		load(userKey(username), &u)
+		return u, nil
 	}
-	u, err := api.GraphUser(ctx, username)
-	if err != nil {
-		return u, err
-	}
-	return u, CacheUser(ctx, u)
+	return cached(ctx, userKey(username), func() (types.User, time.Duration, error) {
+		u, err := api.GraphUser(ctx, username)
+		if err != nil || u.Username == "" {
+			return u, 0, err
+		}
+		if u.ID != "" {
+			store(userIDKey(u.Username), baseCacheTime, u.ID)
+		}
+		return u, baseCacheTime, nil
+	})
 }
 
 func Username(ctx context.Context, userID string) (string, error) {
-	key := "i:" + userID
-	data, err := get(ctx, key)
-	if err != nil || data != nil {
-		return string(data), err
-	}
-	u, err := api.GraphUserByID(ctx, userID)
-	if err != nil || u.Username == "" {
-		return u.Username, err
-	}
-	if err := rdb.Set(ctx, key, u.Username, baseCacheTime).Err(); err != nil {
-		return "", err
-	}
-	if u.ID != "" {
-		if err := CacheUser(ctx, u); err != nil {
-			return "", err
+	return cached(ctx, "i:"+userID, func() (string, time.Duration, error) {
+		u, err := api.GraphUserByID(ctx, userID)
+		if err != nil || u.Username == "" {
+			return "", 0, err
 		}
-	}
-	return u.Username, nil
+		if u.ID != "" {
+			store(userIDKey(u.Username), baseCacheTime, u.ID)
+			store(userKey(u.Username), baseCacheTime, u)
+		}
+		return u.Username, baseCacheTime, nil
+	})
 }
 
 // Broadcast returns a broadcast with a freshly fetched stream URL, which
 // expires too quickly to cache.
 func Broadcast(ctx context.Context, id string) (types.Broadcast, error) {
-	var b types.Broadcast
 	if id == "" {
-		return b, nil
+		return types.Broadcast{}, nil
 	}
-	ok, err := load(ctx, "bc:"+id, &b)
+	b, err := cached(ctx, "bc:"+id, func() (types.Broadcast, time.Duration, error) {
+		b, err := api.BroadcastInfo(ctx, id)
+		if err != nil || b.ID == "" {
+			return b, 0, err
+		}
+		return b, baseCacheTime, nil
+	})
 	if err != nil {
 		return b, err
-	}
-	if !ok {
-		if b, err = api.BroadcastInfo(ctx, id); err != nil {
-			return b, err
-		}
-		if b.ID != "" {
-			if err := store(ctx, "bc:"+b.ID, baseCacheTime, b); err != nil {
-				return b, err
-			}
-		}
 	}
 	b.M3u8URL, err = api.BroadcastStream(ctx, b.MediaKey)
 	return b, err
 }
 
 func AudioSpace(ctx context.Context, id string) (types.AudioSpace, error) {
-	var s types.AudioSpace
 	if id == "" {
-		return s, nil
+		return types.AudioSpace{}, nil
 	}
-	ok, err := load(ctx, "sp:"+id, &s)
+	s, err := cached(ctx, "sp:"+id, func() (types.AudioSpace, time.Duration, error) {
+		s, err := api.AudioSpace(ctx, id)
+		switch {
+		case err != nil || s.ID == "":
+			return s, 0, err
+		case s.State == "RUNNING":
+			return s, baseCacheTime / 6, nil
+		}
+		return s, baseCacheTime, nil
+	})
 	if err != nil {
 		return s, err
-	}
-	if !ok {
-		if s, err = api.AudioSpace(ctx, id); err != nil {
-			return s, err
-		}
-		if s.ID != "" {
-			ttl := baseCacheTime
-			if s.State == "RUNNING" {
-				ttl = baseCacheTime / 6
-			}
-			if err := store(ctx, "sp:"+s.ID, ttl, s); err != nil {
-				return s, err
-			}
-		}
 	}
 	s.M3u8URL, err = api.BroadcastStream(ctx, s.MediaKey)
 	return s, err
@@ -253,114 +236,75 @@ func AccountInfo(ctx context.Context, username string, fetch bool) (types.Accoun
 		return info, nil
 	}
 	key := "ai:" + strings.ToLower(username)
-	if ok, err := load(ctx, key, &info); ok || err != nil || !fetch {
-		return info, err
+	if !fetch {
+		load(key, &info)
+		return info, nil
 	}
-	info, err := api.AboutAccount(ctx, username)
-	if err != nil {
-		return info, err
-	}
-	return info, store(ctx, key, 24*baseCacheTime, info)
+	return cached(ctx, key, func() (types.AccountInfo, time.Duration, error) {
+		info, err := api.AboutAccount(ctx, username)
+		return info, 24 * baseCacheTime, err
+	})
 }
 
 func PhotoRail(ctx context.Context, id string) (types.PhotoRail, error) {
-	var rail types.PhotoRail
 	if id == "" {
-		return rail, nil
+		return types.PhotoRail{}, nil
 	}
-	if ok, err := load(ctx, "pr2:"+strings.ToLower(id), &rail); ok || err != nil {
-		return rail, err
-	}
-	rail, err := api.PhotoRail(ctx, id)
-	if err != nil {
-		return rail, err
-	}
-	return rail, CachePhotoRail(ctx, rail, id)
+	return cached(ctx, "pr2:"+strings.ToLower(id), func() (types.PhotoRail, time.Duration, error) {
+		rail, err := api.PhotoRail(ctx, id)
+		return rail, 2 * baseCacheTime, err
+	})
 }
 
 func Community(ctx context.Context, id string) (types.Community, error) {
-	var c types.Community
 	if id == "" {
-		return c, nil
+		return types.Community{}, nil
 	}
-	if ok, err := load(ctx, "cm:"+id, &c); ok || err != nil {
-		return c, err
-	}
-	c, err := api.GraphCommunity(ctx, id)
-	if err != nil || c.ID == "" {
-		return c, err
-	}
-	return c, store(ctx, "cm:"+c.ID, listCacheTime, c)
+	return cached(ctx, "cm:"+id, func() (types.Community, time.Duration, error) {
+		c, err := api.GraphCommunity(ctx, id)
+		if err != nil || c.ID == "" {
+			return c, 0, err
+		}
+		return c, listCacheTime, nil
+	})
 }
 
 func CommunityModerators(ctx context.Context, id string) ([]types.User, error) {
-	var mods []types.User
 	if id == "" {
-		return mods, nil
+		return nil, nil
 	}
-	if ok, err := load(ctx, "cmm:"+id, &mods); ok || err != nil {
-		return mods, err
-	}
-	res, err := api.GraphCommunityModerators(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return res.Content, store(ctx, "cmm:"+id, listCacheTime, res.Content)
+	return cached(ctx, "cmm:"+id, func() ([]types.User, time.Duration, error) {
+		res, err := api.GraphCommunityModerators(ctx, id)
+		return res.Content, listCacheTime, err
+	})
 }
 
 // List looks a list up by id, or by owner username and slug when id is empty.
 func List(ctx context.Context, username, slug, id string) (types.List, error) {
-	var l types.List
 	if id != "" {
-		if ok, err := load(ctx, "l:"+id, &l); ok || err != nil {
-			return l, err
-		}
+		return cached(ctx, "l:"+id, func() (types.List, time.Duration, error) {
+			l, err := api.GraphList(ctx, id)
+			if err != nil || l.ID == "" {
+				return l, 0, err
+			}
+			return l, listCacheTime, nil
+		})
 	}
-	var err error
-	if id != "" {
-		l, err = api.GraphList(ctx, id)
-	} else {
-		l, err = api.GraphListBySlug(ctx, username, slug)
+	l, err := api.GraphListBySlug(ctx, username, slug)
+	if err == nil && l.ID != "" {
+		store("l:"+l.ID, listCacheTime, l)
 	}
-	if err != nil {
-		return l, err
-	}
-	return l, CacheList(ctx, l)
+	return l, err
 }
 
-func CacheRss(ctx context.Context, query string, rss types.Rss) error {
-	key := "rss:" + query
-	_, err := rdb.Pipelined(ctx, func(p redis.Pipeliner) error {
-		p.HSet(ctx, key, "min", rss.Cursor)
-		if rss.Cursor != "suspended" {
-			p.HSet(ctx, key, "rss", s2.Encode(nil, []byte(rss.Feed)))
+// Rss returns the feed cached at key, or builds and caches it. A feed with
+// a Cursor of two characters or fewer isn't cached.
+func Rss(ctx context.Context, key string, build func() (types.Rss, error)) (types.Rss, error) {
+	return cached(ctx, "rss:"+key, func() (types.Rss, time.Duration, error) {
+		rss, err := build()
+		if err != nil || len(rss.Cursor) <= 2 {
+			return rss, 0, err
 		}
-		p.Expire(ctx, key, rssCacheTime)
-		return nil
+		return rss, rssCacheTime, nil
 	})
-	return err
-}
-
-// Rss returns a cached feed. An empty Cursor means a miss.
-func Rss(ctx context.Context, key string) (types.Rss, error) {
-	var rss types.Rss
-	k := "rss:" + key
-	vals, err := rdb.HMGet(ctx, k, "min", "rss").Result()
-	if err != nil {
-		return rss, err
-	}
-	cursor, _ := vals[0].(string)
-	if len(cursor) <= 2 {
-		return rss, nil
-	}
-	rss.Cursor = cursor
-	if feed, _ := vals[1].(string); cursor != "suspended" && feed != "" {
-		raw, err := s2.Decode(nil, []byte(feed))
-		if err != nil {
-			log.Printf("[cache] decoding RSS %s failed: %v", key, err)
-			return types.Rss{}, nil
-		}
-		rss.Feed = string(raw)
-	}
-	return rss, nil
 }

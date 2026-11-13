@@ -60,14 +60,6 @@ Twitter, and in most cases serves pages faster (eg. timelines load 2-4x faster).
 - Go 1.26 or newer, see [go.dev/doc/install](https://go.dev/doc/install)
 - sassc, to compile the stylesheets (`sassc` on most distros)
 - make
-- redis/valkey
-
-Redis is required for caching and in the future for account info. As of 2024
-Redis is no longer open source, so using the fork Valkey is recommended. It
-should be available on most distros as `redis` or `redis-server`
-(Ubuntu/Debian), or `valkey`/`valkey-server`. Running it with the default
-config is fine, Nitter's default config is set to use the default port and
-localhost.
 
 Here's how to create a `nitter` user, clone the repo, and build the binary
 and stylesheets.
@@ -81,12 +73,10 @@ $ make build
 $ cp nitter.example.conf nitter.conf
 ```
 
-Set your hostname, port, HMAC key, https (must be correct for cookies), and
-Redis info in `nitter.conf`. To run Redis, either run
-`redis-server --daemonize yes`, or `systemctl enable --now redis` (or
-redis-server depending on the distro). Run Nitter by executing `./nitter` or
-using the systemd service below. You should run Nitter behind a reverse proxy
-such as [Nginx](https://github.com/zedeus/nitter/wiki/Nginx) or
+Set your hostname, port, HMAC key and https (must be correct for cookies) in
+`nitter.conf`. Run Nitter by executing `./nitter` or using the systemd service
+below. You should run Nitter behind a reverse proxy such as
+[Nginx](https://github.com/zedeus/nitter/wiki/Nginx) or
 [Apache](https://github.com/zedeus/nitter/wiki/Apache) for security and
 performance reasons.
 
@@ -103,10 +93,6 @@ sessions from `sessions.jsonl`; without that file only the FxTwitter-backed
 pages work. To create it, follow the upstream
 [session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens).
 For guest mode, see `guestAuth` in [nitter.example.conf](nitter.example.conf).
-
-To run Nitter with Docker, you'll need to install and run Redis separately
-before you can run the container. See below for how to also run Redis using
-Docker.
 
 First create your config file. The Docker commands mount it into the container,
 so it has to exist on the host beforehand. If you've cloned the repo:
@@ -135,8 +121,7 @@ docker run -v "$(pwd)/nitter.conf:/src/nitter.conf:ro" \
   -d --network host ghcr.io/perennialtech/nitter:latest
 ```
 
-Use `compose.yaml` to run both Nitter and Redis as different containers:
-Change `redisHost` from `localhost` to `nitter-redis` in `nitter.conf`, then run:
+Or run it with `compose.yaml`:
 
 ```bash
 docker compose up -d

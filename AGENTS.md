@@ -11,7 +11,7 @@ make check
 ```
 
 This is what CI runs: `gofmt`, `go vet` and `go test ./...`. The Go tests
-use local fakes and need neither Redis nor network access.
+use local fakes and need no network access.
 
 ## Building and running
 
@@ -21,9 +21,8 @@ cp nitter.example.conf nitter.conf
 ./nitter
 ```
 
-`make build` needs `sassc` for the stylesheets. Nitter needs Redis or Valkey,
-at the address set in `nitter.conf`, and reads account sessions from
-`sessions.jsonl` (see the README). `NITTER_CONF_FILE` and
+`make build` needs `sassc` for the stylesheets. Nitter reads account
+sessions from `sessions.jsonl` (see the README). `NITTER_CONF_FILE` and
 `NITTER_SESSIONS_FILE` override both paths.
 
 ## Tests against a running instance
@@ -35,7 +34,7 @@ The Python tests in `tests/` run against a built binary, as CI does:
   its address and `NITTER_TEST_PID` to its process ID. The media test needs
   `pbs.twimg.com` resolving to `127.0.0.1`, which CI sets in `/etc/hosts`.
 - `test_api_resource_cleanup.py` starts its own `./nitter` against a fake
-  API; it needs Redis (`NITTER_TEST_REDIS_PORT`, default 6379).
+  API.
 - The rest are seleniumbase integration tests against live Twitter and need
   working sessions. Run them with `poetry run pytest` from `tests/` while
   `./nitter` serves `localhost:8080`.

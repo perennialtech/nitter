@@ -50,7 +50,7 @@ func getenv(key, def string) string {
 }
 
 // healthcheck checks the server on the configured port. /.health only
-// reads the session pools, so it doesn't depend on Redis or upstream.
+// reads the session pools, so it doesn't depend on upstream.
 func healthcheck() error {
 	cfg, err := config.Load(getenv("NITTER_CONF_FILE", "./nitter.conf"))
 	if err != nil {
@@ -111,10 +111,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := cache.Init(ctx, cfg); err != nil {
-		return fmt.Errorf("failed to connect to Redis at %s:%d: %w", cfg.RedisHost, cfg.RedisPort, err)
-	}
-	log.Printf("Connected to Redis at %s:%d", cfg.RedisHost, cfg.RedisPort)
+	cache.Init(cfg)
 	api.StartStatsLogger(ctx)
 
 	handler, err := routes.New(cfg)
