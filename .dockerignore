@@ -9,5 +9,7 @@
 !go.sum
 !Makefile
 !nitter.example.conf
+# make check compares it with what cmd/genconfig writes.
+!nitter.example.env
 # go build reads .git to stamp the commit shown on the about page.
 !.git

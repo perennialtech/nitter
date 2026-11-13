@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package config loads nitter.conf. See nitter.example.conf for every key.
+// Package config loads nitter.conf and the environment variables Nitter
+// reads. Options and EnvVars define and document every setting;
+// nitter.example.conf and nitter.example.env are generated from them.
 package config
 
 import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -19,9 +20,11 @@ type Config struct {
 	Hostname  string
 	StaticDir string
 
-	HmacKey                 string
-	Base64Media             bool
-	MinTokens               int
+	HmacKey     string
+	Base64Media bool
+	// EnableRSS is the enableRSS master switch; FromFile turns off every
+	// EnableRSS* feed when it is off.
+	EnableRSS               bool
 	EnableRSSUserTweets     bool
 	EnableRSSUserReplies    bool
 	EnableRSSUserMedia      bool
@@ -134,42 +137,6 @@ func parseValue(s string) (string, error) {
 	return strings.TrimSpace(s), nil
 }
 
-type getter struct {
-	f   File
-	err error
-}
-
-func (g *getter) str(section, key, def string) string {
-	if v := g.f[section][key]; v != "" {
-		return v
-	}
-	return def
-}
-
-func (g *getter) int(section, key string, def int) int {
-	v := g.f[section][key]
-	if v == "" {
-		return def
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil && g.err == nil {
-		g.err = fmt.Errorf("%s.%s: %w", section, key, err)
-	}
-	return n
-}
-
-func (g *getter) bool(section, key string, def bool) bool {
-	v := g.f[section][key]
-	if v == "" {
-		return def
-	}
-	b, err := ParseBool(v)
-	if err != nil && g.err == nil {
-		g.err = fmt.Errorf("%s.%s: %w", section, key, err)
-	}
-	return b
-}
-
 // ParseBool accepts the same spellings as Nim's parseBool.
 func ParseBool(s string) (bool, error) {
 	switch strings.ToLower(s) {
@@ -193,60 +160,24 @@ func Load(path string) (*Config, error) {
 	return FromFile(f)
 }
 
+// FromFile reads every key in Options from f, using the default of each
+// one that is missing or empty.
 func FromFile(f File) (*Config, error) {
-	g := &getter{f: f}
-	rss := g.bool("Config", "enableRSS", true)
-	c := &Config{
-		Address:   g.str("Server", "address", "0.0.0.0"),
-		Port:      g.int("Server", "port", 8080),
-		UseHTTPS:  g.bool("Server", "https", true),
-		StaticDir: g.str("Server", "staticDir", "./public"),
-		Title:     g.str("Server", "title", "Nitter"),
-		Hostname:  g.str("Server", "hostname", "nitter.net"),
-
-		ListCacheTime: g.int("Cache", "listMinutes", 120),
-		RssCacheTime:  g.int("Cache", "rssMinutes", 10),
-		CacheMaxMB:    g.int("Cache", "maxMegabytes", 128),
-
-		HmacKey:                 g.str("Config", "hmacKey", "secretkey"),
-		Base64Media:             g.bool("Config", "base64Media", false),
-		MinTokens:               g.int("Config", "tokenCount", 10),
-		EnableRSSUserTweets:     rss && g.bool("Config", "enableRSSUserTweets", true),
-		EnableRSSUserReplies:    rss && g.bool("Config", "enableRSSUserReplies", true),
-		EnableRSSUserMedia:      rss && g.bool("Config", "enableRSSUserMedia", true),
-		EnableRSSUserArticles:   rss && g.bool("Config", "enableRSSUserArticles", true),
-		EnableRSSUserReposts:    rss && g.bool("Config", "enableRSSUserReposts", true),
-		EnableRSSSearch:         rss && g.bool("Config", "enableRSSSearch", true),
-		EnableRSSList:           rss && g.bool("Config", "enableRSSList", true),
-		EnableRSSCommunityNotes: rss && g.bool("Config", "enableRSSCommunityNotes", true),
-		EnableDebug:             g.bool("Config", "enableDebug", false),
-		Proxy:                   g.str("Config", "proxy", ""),
-		ProxyAuth:               g.str("Config", "proxyAuth", ""),
-		APIProxy:                g.str("Config", "apiProxy", ""),
-		DisableTid:              g.bool("Config", "disableTid", false),
-		MaxConcurrentReqs:       g.int("Config", "maxConcurrentReqs", 2),
-		MaxRetries:              g.int("Config", "maxRetries", 1),
-		RetryDelayMs:            g.int("Config", "retryDelayMs", 150),
-		APITimeoutMs:            g.int("Config", "apiTimeoutMs", 15000),
-		GuestAuth:               g.bool("Config", "guestAuth", false),
-		GuestPoolSize:           g.int("Config", "guestPoolSize", 1),
-		EnableTrends:            g.bool("Config", "enableTrends", false),
-		TrendsTab1Name:          g.str("Config", "trendsTab1Name", "United States"),
-		TrendsTab1Woeid:         g.int("Config", "trendsTab1Woeid", 23424977),
-		TrendsTab2Name:          g.str("Config", "trendsTab2Name", "Worldwide"),
-		TrendsTab2Woeid:         g.int("Config", "trendsTab2Woeid", 1),
-		TrendsCacheMinutes:      g.int("Config", "trendsCacheMinutes", 15),
-		TrendsMaxItems:          g.int("Config", "trendsMaxItems", 15),
-		ShowCommunityNotesNav:   g.bool("Config", "showCommunityNotesNav", true),
-		ShowRetweetTime:         g.bool("Config", "showRetweetTime", true),
-		EnableTranslation:       g.bool("Config", "enableTranslation", true),
-		OnDemandTranslation:     g.bool("Config", "onDemandTranslation", false),
-		OnDemandTranslationLang: g.str("Config", "onDemandTranslationLang", "en"),
-
-		Preferences: f["Preferences"],
+	c := &Config{Preferences: f["Preferences"]}
+	for _, o := range Options {
+		if err := o.apply(c, f); err != nil {
+			return nil, err
+		}
 	}
-	if g.err != nil {
-		return nil, g.err
+	if !c.EnableRSS {
+		c.EnableRSSUserTweets = false
+		c.EnableRSSUserReplies = false
+		c.EnableRSSUserMedia = false
+		c.EnableRSSUserArticles = false
+		c.EnableRSSUserReposts = false
+		c.EnableRSSSearch = false
+		c.EnableRSSList = false
+		c.EnableRSSCommunityNotes = false
 	}
 	if c.CacheMaxMB <= 0 {
 		return nil, fmt.Errorf("Cache.maxMegabytes: must be positive, got %d", c.CacheMaxMB)

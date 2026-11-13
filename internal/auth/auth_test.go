@@ -438,6 +438,17 @@ func TestCookieSelectionRespectsBusySessions(t *testing.T) {
 	}
 }
 
+func TestBusySessionsAreSkipped(t *testing.T) {
+	setup(t, 1, 2)
+	busy := &Session{Kind: OAuth, OAuthToken: "busy", pending: 2}
+	mu.Lock()
+	sessionPool = []*Session{busy}
+	mu.Unlock()
+	if _, err := GetSession(request); !errors.Is(err, types.ErrNoSessions) {
+		t.Fatalf("a session with maxConcurrentReqs pending requests must not be used, got %v", err)
+	}
+}
+
 func TestRateLimitedSessionsAreSkipped(t *testing.T) {
 	setup(t, 1, 2)
 	limited := &Session{Kind: Cookie, AuthToken: "a", Ct0: "c"}

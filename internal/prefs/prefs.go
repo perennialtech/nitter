@@ -31,6 +31,14 @@ type Pref struct {
 	// Input
 	DefaultInput string
 	Placeholder  string
+	// Doc adds to Label in nitter.example.conf, where the label alone
+	// doesn't say what the preference does.
+	Doc string
+}
+
+func (p Pref) withDoc(doc string) Pref {
+	p.Doc = doc
+	return p
 }
 
 type Category struct {
@@ -55,7 +63,9 @@ func input(name, def, label, placeholder string) Pref {
 // theme preference has none here.
 var Categories = []Category{
 	{"Display", []Pref{
-		sel("theme", "Nitter", "Theme"),
+		sel("theme", "Nitter", "Theme").withDoc("The name of a stylesheet in " +
+			"css/themes under staticDir, as the settings page lists it, such as " +
+			"Nitter, Twitter Dark or Catppuccin Mocha."),
 		checkbox("infiniteScroll", false, "Infinite scrolling (experimental, requires JavaScript)"),
 		checkbox("stickyProfile", true, "Make profile sidebar stick to top"),
 		checkbox("stickyNav", true, "Keep navbar fixed to top"),
@@ -68,14 +78,18 @@ var Categories = []Category{
 		checkbox("hideReplies", false, "Hide tweet replies"),
 		checkbox("hideRelated", true, "Hide related tweets under replies"),
 		checkbox("hideCommunityNotes", false, "Hide community notes"),
-		checkbox("autoTranslate", false, "Auto translate tweets if available"),
+		checkbox("autoTranslate", false, "Auto translate tweets if available").withDoc(
+			"Shows translations without clicking \"See translation\". Not offered with guestAuth."),
 		checkbox("squareAvatars", false, "Square profile pictures"),
-		checkbox("guestSearchFallback", true, "Use search for timelines as guest (turn off for shadowbanned accounts)"),
+		checkbox("guestSearchFallback", true, "Use search for timelines as guest (turn off for shadowbanned accounts)").withDoc(
+			"Only applies with guestAuth: profile tweets come from a search for the " +
+				"user's tweets instead of their timeline."),
 	}},
 	{"Media", []Pref{
 		checkbox("mp4Playback", true, "Enable mp4 video playback (only for gifs)"),
 		checkbox("hlsPlayback", false, "Enable HLS video streaming (requires JavaScript)"),
-		checkbox("proxyVideos", true, "Proxy video streaming through the server (might be slow)"),
+		checkbox("proxyVideos", true, "Proxy video streaming through the server (might be slow)").withDoc(
+			"When off, browsers load videos from Twitter's servers directly."),
 		checkbox("muteVideos", false, "Mute videos by default"),
 		checkbox("autoplayGifs", true, "Autoplay gifs"),
 		checkbox("compactGallery", false, "Compact media gallery (no profile info or text)"),
@@ -83,9 +97,15 @@ var Categories = []Category{
 		sel("mediaView", "Timeline", "Default media view", "Timeline", "Grid", "Gallery"),
 	}},
 	{"Link replacements (blank to disable)", []Pref{
-		input("replaceTwitter", "", "Twitter -> Nitter", "Nitter hostname"),
-		input("replaceYouTube", "", "YouTube -> Piped/Invidious", "Piped hostname"),
-		input("replaceReddit", "", "Reddit -> Teddit/Libreddit", "Teddit hostname"),
+		input("replaceTwitter", "", "Twitter -> Nitter", "Nitter hostname").withDoc(
+			"Host name that links to twitter.com, x.com and t.co in tweets are " +
+				"rewritten to, such as nitter.net. Empty leaves them as they are."),
+		input("replaceYouTube", "", "YouTube -> Piped/Invidious", "Piped hostname").withDoc(
+			"Host name of a Piped or Invidious instance that YouTube links are " +
+				"rewritten to. Empty leaves them as they are."),
+		input("replaceReddit", "", "Reddit -> Teddit/Libreddit", "Teddit hostname").withDoc(
+			"Host name of a Teddit or Libreddit instance that Reddit links are " +
+				"rewritten to. Empty leaves them as they are."),
 	}},
 }
 
