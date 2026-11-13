@@ -84,16 +84,10 @@ Twitter account.
 
 ### Dependencies
 
-- libpcre
-- libsass
+- Go 1.26 or newer, see [go.dev/doc/install](https://go.dev/doc/install)
+- sassc, to compile the stylesheets (`sassc` on most distros)
+- make
 - redis/valkey
-
-To compile Nitter you need Nim 2.2.12 or newer, see
-[nim-lang.org](https://nim-lang.org/install.html) for details. It is possible
-to install it system-wide or in the user directory you create below.
-
-To compile the scss files, you need to install `libsass`. On Ubuntu and Debian,
-you can use `libsass-dev`.
 
 Redis is required for caching and in the future for account info. As of 2024
 Redis is no longer open source, so using the fork Valkey is recommended. It
@@ -102,18 +96,15 @@ should be available on most distros as `redis` or `redis-server`
 config is fine, Nitter's default config is set to use the default port and
 localhost.
 
-Here's how to create a `nitter` user, clone the repo, and build the project
-along with the scss and md files.
+Here's how to create a `nitter` user, clone the repo, and build the binary
+and stylesheets.
 
 ```bash
 # useradd -m nitter
 # su nitter
 $ git clone https://github.com/perennialtech/nitter
 $ cd nitter
-$ bash tools/patch-nim.sh
-$ nimble -l build -d:danger --mm:refc
-$ nimble -l scss
-$ nimble -l md
+$ make build
 $ cp nitter.example.conf nitter.conf
 ```
 
@@ -225,7 +216,7 @@ lines). If you're running the Docker image, you can do this:
 
 ## Contributing
 
-For build and test instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For build and test instructions, see [AGENTS.md](AGENTS.md).
 
 ## Contact
 
