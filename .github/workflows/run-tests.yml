@@ -90,6 +90,7 @@ jobs:
           nim r tests/test_upstream_features.nim
           nim r tests/test_redis_cache.nim
           nim r tests/test_http_client_timeout.nim
+          nim r tests/test_fxtwitter.nim
 
       - name: Test HTTP and HTTPS CONNECT proxies
         run: python3 tests/test_http_proxy.py -v

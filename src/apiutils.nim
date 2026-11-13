@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import httpclient, asyncdispatch, options, strutils, uri, times, math, tables
 import jsony, packedjson, zippy, oauth/oauth1
-import types, auth, consts, parserutils, http_client, tid
+import types, auth, consts, parserutils, http_client, tid, apistats
 import experimental/types/common
 
 const
@@ -382,6 +382,10 @@ template fetchImpl(result, fetchBody) {.dirty.} =
   finally:
     release(session)
 
+proc apiName(req: ApiReq): string =
+  ## GraphQL endpoints are "<query id>/<operation>"; count them by operation.
+  req.cookie.endpoint.rsplit('/', maxsplit=1)[^1]
+
 template retry(bod) {.dirty.} =
   var session: Session
   var retrySuccess = false
@@ -391,7 +395,13 @@ template retry(bod) {.dirty.} =
       bod
       retrySuccess = true
       break
-    except RateLimitError:
+    except NoSessionsError:
+      recordCall("sessions", req.apiName, "limited")
+      raise
+    except CatchableError as e:
+      if not (e of RateLimitError):
+        recordCall("sessions", req.apiName, "error")
+        raise
       let api = if session.isNil: req.cookie.endpoint
                 else: req.endpoint(session)
       if session.isNil:
@@ -404,7 +414,9 @@ template retry(bod) {.dirty.} =
       if retryDelayMs > 0:
         await sleepAsync(retryDelayMs)
   if not retrySuccess:
+    recordCall("sessions", req.apiName, "limited")
     raise rateLimitError()
+  recordCall("sessions", req.apiName, "ok")
 
 proc fetch*(req: ApiReq): Future[JsonNode] {.async.} =
   retry:

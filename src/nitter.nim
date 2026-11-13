@@ -6,7 +6,7 @@ from os import getEnv, normalizedPath
 
 import jester
 
-import types, config, prefs, formatters, redis_cache, http_client, auth, apiutils, trends
+import types, config, prefs, formatters, redis_cache, http_client, auth, apiutils, trends, apistats
 import views/[general, about]
 import views/trends as trendsView
 import routes/[
@@ -73,6 +73,7 @@ initAboutPage(cfg.staticDir)
 waitFor initRedisPool(cfg)
 stdout.write &"Connected to Redis at {cfg.redisHost}:{cfg.redisPort}\n"
 stdout.flushFile
+asyncCheck logApiStats()
 
 createArticleRouter(cfg)
 createUnsupportedRouter(cfg)

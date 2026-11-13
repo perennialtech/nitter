@@ -132,10 +132,13 @@ Images are published to `ghcr.io/perennialtech/nitter` after successful CI on
 `master`. The `latest` and `master` tags, and full commit-SHA tags, support both
 `linux/amd64` and `linux/arm64`. Pull request builds do not publish images.
 
-For account-based browsing, follow the upstream
-[session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens)
-to create `sessions.jsonl` before starting the container. For guest mode, see
-`guestAuth` in [nitter.example.conf](nitter.example.conf).
+Nitter fetches profiles, RSS timelines, media tabs, search, followers and
+reposters from the public [FxTwitter API](https://docs.fxembed.com/api/)
+first. Everything else, and any FxTwitter request that fails, uses account
+sessions from `sessions.jsonl`; without that file only the FxTwitter-backed
+pages work. To create it, follow the upstream
+[session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens).
+For guest mode, see `guestAuth` in [nitter.example.conf](nitter.example.conf).
 
 To run Nitter with Docker, you'll need to install and run Redis separately
 before you can run the container. See below for how to also run Redis using

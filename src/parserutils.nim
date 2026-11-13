@@ -559,3 +559,93 @@ proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
     else: ""
 
   result = GalleryPhoto(url: url, tweetId: $t.id)
+
+proc facetSlice(facet: JsonNode): Slice[int] =
+  facet{"indices"}{0}.getInt ..< facet{"indices"}{1}.getInt
+
+proc expandFxText*(tweet: Tweet; rawText: JsonNode; replyTo = "";
+                   hideTwitter = false; hideArticle = false) =
+  ## FxTwitter's raw_text is X's full_text (HTML-escaped) with its entities as
+  ## facets, indexed in code points like X's, so it expands the same way.
+  let
+    text = rawText{"text"}.getStr
+    textRange = rawText{"display_text_range"}
+    textSlice = textRange{0}.getInt .. textRange{1}.getInt
+    hasCard = tweet.card.isSome
+
+  if replyTo.len > 0:
+    tweet.reply.add replyTo
+
+  var replacements = newSeq[ReplaceSlice]()
+  with facets, rawText{"facets"}:
+    for f in facets:
+      let slice = f.facetSlice
+      case f{"type"}.getStr
+      of "url":
+        let
+          original = f{"original"}.getStr
+          url = f{"replacement"}.getStr(original)
+        if hideArticle and url.isTwitterUrl and "/article/" in url:
+          if slice.a < textSlice.b:
+            replacements.add ReplaceSlice(kind: rkRemove, slice: slice)
+        elif hideTwitter and slice.b.succ >= textSlice.b and url.isTwitterUrl:
+          if slice.a < textSlice.b:
+            replacements.add ReplaceSlice(kind: rkRemove, slice: slice)
+        else:
+          replacements.add ReplaceSlice(kind: rkUrl, url: url,
+                                        display: url.shortLink, slice: slice)
+        if hasCard and original == get(tweet.card).url:
+          get(tweet.card).url = url
+      of "hashtag", "cashtag", "symbol":
+        replacements.add ReplaceSlice(kind: rkHashtag, slice: slice)
+      of "mention":
+        let
+          name = f{"original"}.getStr
+          idx = tweet.reply.find(name)
+        if slice.a >= textSlice.a:
+          replacements.add ReplaceSlice(kind: rkMention, slice: slice, url: "/" & name)
+          if idx > -1 and name != replyTo:
+            tweet.reply.delete idx
+        elif idx == -1 and tweet.replyId != 0:
+          tweet.reply.add name
+      else: discard
+
+  replacements.deduplicate
+  replacements.sort(cmp)
+
+  tweet.text = text.toRunes.replacedWith(replacements, textSlice).strip(leading=false)
+
+proc expandFxBio*(user: var User; rawDescription: JsonNode) =
+  let orig = rawDescription{"text"}.getStr.toRunes
+  var replacements = newSeq[ReplaceSlice]()
+  with facets, rawDescription{"facets"}:
+    for f in facets:
+      if f{"type"}.getStr == "url":
+        let url = f{"replacement"}.getStr(f{"original"}.getStr)
+        replacements.add ReplaceSlice(kind: rkUrl, url: url, display: url.shortLink,
+                                      slice: f.facetSlice)
+
+  replacements.deduplicate
+  replacements.sort(cmp)
+
+  user.bio = orig.replacedWith(replacements, 0 .. orig.len)
+  user.bio = user.bio.replacef(unRegex, unReplace)
+                     .replacef(htRegex, htReplace)
+
+proc expandFxNote*(note: JsonNode): string =
+  let text = note{"text"}.getStr
+  let runes = text.escapeEntityText.toRunes
+  var replacements: seq[ReplaceSlice]
+  with facets, note{"facets"}:
+    for f in facets:
+      let slice = f.facetSlice
+      if f{"type"}.getStr == "url" and slice.a >= 0 and slice.b < runes.len:
+        let url = f{"replacement"}.getStr(f{"original"}.getStr).localizeExternalLink
+        replacements.add ReplaceSlice(kind: rkUrl, slice: slice, url: url,
+                                      display: $runes[slice])
+
+  if replacements.len == 0:
+    return linkifyBirdwatchUrls(text)
+
+  replacements.sort(cmp)
+  result = runes.replacedWith(replacements, 0 .. runes.len).unescapeEntityText

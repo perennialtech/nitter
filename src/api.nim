@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 import options, asyncdispatch, httpclient, strutils, sequtils, sugar, tables, times
 import packedjson
-import types, query, formatters, consts, apiutils, parser, parserutils, utils
+import types, query, formatters, consts, apiutils, parser, parserutils, utils, fxtwitter
 import experimental/parser
 
 # Helper to generate params object for GraphQL requests
@@ -58,13 +58,29 @@ proc userUrl(username: string): ApiReq =
     oauth: apiUrl(graphUserV2, $(%*{"screen_name": username}))
   )
 
+proc fxFailed(e: ref FxError) =
+  ## The caller continues with the account sessions.
+  echo "[fx] ", e.msg, ", falling back to sessions"
+
 proc getGraphUser*(username: string): Future[User] {.async.} =
   if username.len == 0: return
+  var fromFx = false
+  try:
+    result = await getFxUser(username)
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   let js = await fetchRaw(userUrl(username))
   result = parseGraphUser(js)
 
 proc getGraphUserById*(id: string): Future[User] {.async.} =
   if id.len == 0 or id.any(c => not c.isDigit): return
+  var fromFx = false
+  try:
+    result = await getFxUser("id:" & id)
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   let
     url = apiReq(graphUserById, userByRestIdVars % id)
     js = await fetchRaw(url)
@@ -112,6 +128,33 @@ proc getAudioSpace*(id: string): Future[AudioSpace] {.async.} =
 proc getGraphUserTweets*(id: string; kind: TimelineKind; after="";
                          rss = false): Future[Profile] {.async.} =
   if id.len == 0: return
+  # FxTwitter's statuses tab includes reposts, like UserTweets, so it serves the
+  # tabs that use UserTweets; the web tab's originals-only timeline and its
+  # pinned post have no FxTwitter equivalent.
+  var
+    fxTab = ""
+    fxCount = 20
+    fxParams: seq[(string, string)]
+  case kind
+  of TimelineKind.tweets:
+    if rss or isGuestAuth(): fxTab = "statuses"
+  of TimelineKind.replies:
+    if rss:
+      fxTab = "statuses"
+      fxParams.add ("with_replies", "true")
+  of TimelineKind.media:
+    fxTab = "media"
+    fxCount = 100
+  else: discard
+
+  if fxTab.len > 0:
+    var fromFx = false
+    try:
+      result.tweets = await getFxUserTimeline(id, fxTab, fxCount, after, fxParams)
+      fromFx = true
+    except FxError as e: fxFailed(e)
+    if fromFx: return
+
   let
     cursor = cursorParam(after)
     url = case kind
@@ -215,6 +258,12 @@ proc getGraphListMembers*(list: List; after=""): Future[Result[User]] {.async.} 
 proc getGraphUserConnections(userId: string; endpoint: string; kind: QueryKind;
                               after=""): Future[Result[User]] {.async.} =
   if userId.len == 0: return
+  var fromFx = false
+  try:
+    result = await getFxConnections(userId, kind, 20, after)
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   var variables = %*{
     "userId": userId,
     "count": 20,
@@ -460,6 +509,12 @@ proc getGraphEditHistory*(id: string): Future[EditHistory] {.async.} =
 
 proc getGraphRetweeters*(id: string; after=""): Future[UsersTimeline] {.async.} =
   if id.len == 0: return
+  var fromFx = false
+  try:
+    result = await getFxReposters(id, 20, after)
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   let
     cursor = cursorParam(after)
     variables = reactorsVars % [id, cursor]
@@ -519,23 +574,34 @@ proc getGraphTweetSearch*(query: Query; after=""): Future[Timeline] {.async.} =
     of media: (if query.fromUser.len == 0: "Media" else: "Latest")
     else: "Latest"
 
-  var
-    variables = %*{
-      "rawQuery": q,
-      "count": 20,
-      "querySource": "typed_query",
-      "product": product,
-      "withGrokTranslatedBio":true,
-      "withQuickPromoteEligibilityTweetFields":false,
-      "withBirdwatchNotes":true
-    }
+  let cursor = if maxId.len == 0: after else: ""
 
-  if after.len > 0 and maxId.len == 0:
-    variables["cursor"] = % after
-  let
-    url = apiReq(graphSearchTimeline, $variables)
-    js = await fetch(url)
-  result = parseGraphSearch[Tweets](js, after)
+  var fromFx = false
+  # https://docs.fxembed.com/api/twitter/operations/2search/ caps q at 512
+  if q.len <= 512:
+    try:
+      result = await getFxSearch(q, product.toLowerAscii, 20, cursor)
+      fromFx = true
+    except FxError as e: fxFailed(e)
+
+  if not fromFx:
+    var
+      variables = %*{
+        "rawQuery": q,
+        "count": 20,
+        "querySource": "typed_query",
+        "product": product,
+        "withGrokTranslatedBio":true,
+        "withQuickPromoteEligibilityTweetFields":false,
+        "withBirdwatchNotes":true
+      }
+
+    if cursor.len > 0:
+      variables["cursor"] = % cursor
+    let
+      url = apiReq(graphSearchTimeline, $variables)
+      js = await fetch(url)
+    result = parseGraphSearch[Tweets](js, after)
   result.query = query
 
   # when no more items are available the API just returns the last page in
@@ -568,14 +634,32 @@ proc getGraphProductSearch[T](query: Query; product: string;
   result = parseGraphSearch[T](js, after)
   result.query = query
 
-proc getGraphUserSearch*(query: Query; after=""): Future[Result[User]] =
-  getGraphProductSearch[User](query, "People", after)
+proc getGraphUserSearch*(query: Query; after=""): Future[Result[User]] {.async.} =
+  var fromFx = false
+  if query.text.len in 1 .. 512:
+    try:
+      result = await getFxUserSearch(query.text, 20, after)
+      result.query = query
+      fromFx = true
+    except FxError as e: fxFailed(e)
+  if fromFx: return
+  result = await getGraphProductSearch[User](query, "People", after)
 
 proc getGraphListSearch*(query: Query; after=""): Future[Result[ListSearchResult]] =
   getGraphProductSearch[ListSearchResult](query, "Lists", after)
 
 proc getPhotoRail*(id: string): Future[PhotoRail] {.async.} =
   if id.len == 0: return
+  var fromFx = false
+  try:
+    let media = await getFxUserTimeline(id, "media", 16)
+    for thread in media.content:
+      let photo = extractGalleryPhoto(thread[0])
+      if photo.url.len > 0:
+        result.add photo
+    fromFx = true
+  except FxError as e: fxFailed(e)
+  if fromFx: return
   let js = await fetch(mediaUrl(id, ""))
   result = parseGraphPhotoRail(js)
 
