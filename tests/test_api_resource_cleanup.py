@@ -63,13 +63,20 @@ class StalledApiHandler(BaseHTTPRequestHandler):
         pass
 
 
+class StalledApiServer(ThreadingHTTPServer):
+    # The default listen backlog of 5 drops some of the concurrent
+    # connections, and their SYN retransmits come after Nitter's one-second
+    # deadline, so they never reach the handler.
+    request_queue_size = 64
+    daemon_threads = True
+
+
 class ApiResourceCleanupTests(unittest.TestCase):
     def test_abandoned_api_requests_release_sockets(self):
         with tempfile.TemporaryDirectory(prefix="nitter-api-cleanup-") as temp:
             temp = Path(temp)
             StalledApiHandler.requests = 0
-            fixture = ThreadingHTTPServer(("127.0.0.1", 0), StalledApiHandler)
-            fixture.daemon_threads = True
+            fixture = StalledApiServer(("127.0.0.1", 0), StalledApiHandler)
             thread = threading.Thread(target=fixture.serve_forever, daemon=True)
             thread.start()
 
@@ -118,8 +125,10 @@ class ApiResourceCleanupTests(unittest.TestCase):
                     count = 24
                     for i in range(count):
                         client = socket.create_connection(("127.0.0.1", port), 3)
+                        # Lists only come from the sessions API; profiles
+                        # would try FxTwitter on the internet first.
                         client.sendall(
-                            (f"GET /api_resource_test_{port}_{i} HTTP/1.1\r\n"
+                            (f"GET /i/lists/{port}{i:02} HTTP/1.1\r\n"
                              "Host: localhost\r\nConnection: close\r\n\r\n").encode()
                         )
                         clients.append(client)
