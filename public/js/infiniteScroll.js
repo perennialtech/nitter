@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 function insertBeforeLast(node, elem) {
-  node.insertBefore(elem, node.childNodes[node.childNodes.length - 2]);
+  const items = node.querySelectorAll(".timeline-item");
+  const lastItem = items[items.length - 1];
+  if (lastItem) {
+    lastItem.after(elem);
+  } else {
+    node.prepend(elem);
+  }
 }
 
 function getLoadMore(doc) {
@@ -176,7 +182,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const repliesContainer = document.querySelector(".replies");
   const isTweet = !!repliesContainer;
   const containerClass = isTweet ? ".replies" : ".timeline";
-  const itemClass = containerClass + " > div:not(.top-ref)";
+  const itemClass = containerClass + " > .timeline-item";
   const html = document.documentElement;
   const container = repliesContainer || document.querySelector(containerClass);
   const masonryEl = container?.querySelector(".gallery-masonry");
@@ -220,7 +226,7 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           const knownHrefs = getHrefs(`${itemClass} .tweet-link`);
           for (const item of doc.querySelectorAll(itemClass)) {
-            if (item.className === "timeline-item show-more" || isDuplicate(item, knownHrefs)) continue;
+            if (item.classList.contains("show-more") || isDuplicate(item, knownHrefs)) continue;
             isTweet ? container.appendChild(item) : insertBeforeLast(container, item);
           }
         }
