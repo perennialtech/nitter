@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 function insertBeforeLast(node, elem) {
-  const items = node.querySelectorAll(".timeline-item");
-  const lastItem = items[items.length - 1];
-  if (lastItem) {
-    lastItem.after(elem);
+  const topRef = node.querySelector(":scope > .top-ref");
+  if (topRef) {
+    topRef.before(elem);
   } else {
-    node.prepend(elem);
+    node.append(elem);
   }
 }
 
@@ -182,7 +181,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const repliesContainer = document.querySelector(".replies");
   const isTweet = !!repliesContainer;
   const containerClass = isTweet ? ".replies" : ".timeline";
-  const itemClass = containerClass + " > .timeline-item";
+  const itemClass = containerClass + " > div:not(.top-ref):not(.show-more):not(.timeline-header):not(.timeline-footer)";
   const html = document.documentElement;
   const container = repliesContainer || document.querySelector(containerClass);
   const masonryEl = container?.querySelector(".gallery-masonry");
