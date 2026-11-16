@@ -64,7 +64,7 @@
 {{- end}}
 
 {{- define "banner" -}}
-{{- if .URL}}<a href="{{url .URL}}" target="_blank">{{genImg .Banner}}</a>
+{{- if .URL}}<a href="{{url .URL}}" target="_blank"><img src="{{url .URL}}" alt="" decoding="async"></a>
 {{- else if .Color}}<a style="{{.Color}}"></a>
 {{- else}}<a></a>{{end -}}
 {{- end}}

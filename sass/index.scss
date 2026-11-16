@@ -12,6 +12,9 @@
 @import "space";
 @import "_article";
 
+// Keep the icon rules in the first stylesheet the browser receives.
+@import "fontello";
+
 body {
   // colors
   --bg_color: #{$bg_color};

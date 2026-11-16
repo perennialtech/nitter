@@ -4,7 +4,7 @@ build: css
 	go build -trimpath -o nitter ./cmd/nitter
 
 css:
-	sassc -I sass/include sass/index.scss public/css/style.css
+	sassc -t compressed -I sass/include -I public/css sass/index.scss public/css/style.css
 
 # Writes nitter.example.conf and nitter.example.env from the option
 # definitions; check fails until they are current.

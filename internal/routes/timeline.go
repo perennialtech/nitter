@@ -194,7 +194,6 @@ func (c *ctx) showTimeline(q types.Query, rss, after string) (string, error) {
 		Desc:      formatters.UserPageDesc(u),
 		RSS:       rss,
 		Images:    []string{formatters.UserPic(u.UserPic, "_400x400")},
-		Banner:    u.Banner,
 	}), nil
 }
 

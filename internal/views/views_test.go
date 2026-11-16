@@ -453,6 +453,10 @@ func TestPages(t *testing.T) {
 	requireSel(t, doc, `link[href="/css/themes/catppuccin_frappe.css"]`, ".search-bar input",
 		`.icon-cog[href="/settings?referer=%2Fjack%2Fstatus%2F1%3Fx%3D1%23m"]`,
 		`.icon-rss[href="/jack/rss"]`, `meta[content="summary"]`, `body.fixed-nav`, ".container .panel-container")
+	requireSel(t, doc, `link[rel="preload"][as="font"][href="/fonts/fontello.woff2?73825041"]`, `meta[property="og:image"]`)
+	if strings.Contains(page, `href="/css/fontello.css`) || strings.Contains(page, `as="image"`) {
+		t.Error("page head requests an extra stylesheet or a social preview image")
+	}
 	if !strings.HasPrefix(page, "<!DOCTYPE html>") || !strings.Contains(page, "<title>T | Nitter</title>") {
 		t.Error("main page shell")
 	}
