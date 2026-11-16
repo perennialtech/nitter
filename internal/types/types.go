@@ -456,6 +456,8 @@ type Tweet struct {
 	History            []int64
 	Note               string
 	HasBirdwatch       bool
+	CommunityID        string
+	CommunityName      string
 	IsAd               bool
 	IsAI               bool
 	ArticlePreview     *ArticlePreview

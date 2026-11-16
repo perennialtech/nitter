@@ -1049,6 +1049,14 @@ func ParseGraphTweet(js gjson.Result) *types.Tweet {
 
 	result.IsTranslatable = getBool(get(js, "is_translatable"))
 	result.HasBirdwatch = getBool(get(js, "has_birdwatch_notes")) || notNull(get(js, "birdwatch_pivot"))
+
+	if community := get(js, "community_results.result"); notNull(community) {
+		id := strOr(get(community, "id_str"), str(get(community, "rest_id")))
+		if id != "" && strings.Trim(id, "0123456789") == "" {
+			result.CommunityID = id
+			result.CommunityName = str(get(community, "name"))
+		}
+	}
 	return result
 }
 

@@ -267,6 +267,22 @@ func TestTranslateOnDemandForm(t *testing.T) {
 
 // --- render tests against the selectors in tests/base.py ---
 
+func TestTweetCommunityLink(t *testing.T) {
+	post := richTweet()
+	post.CommunityID = "123"
+	post.CommunityName = "Birds & Bees"
+	p := prefs.Defaults
+	out := RenderTweet(post, &p, "/jack/status/1234567890", TweetOpts{})
+	requireSel(t, parse(t, out), `.tweet-community a[href="/i/communities/123"]`)
+	if !strings.Contains(string(out), "Birds &amp; Bees") {
+		t.Error("community link is missing the escaped name")
+	}
+	out = RenderTweet(post, &p, "/i/communities/123/latest", TweetOpts{})
+	if strings.Contains(string(out), "tweet-community") {
+		t.Error("community link appeared on a community page")
+	}
+}
+
 func TestTweetSelectors(t *testing.T) {
 	p := prefs.Defaults
 	tw := richTweet()
