@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 function insertBeforeLast(node, elem) {
-  node.insertBefore(elem, node.childNodes[node.childNodes.length - 2]);
+  const topRef = node.querySelector(":scope > .top-ref");
+  if (topRef) {
+    topRef.before(elem);
+  } else {
+    node.append(elem);
+  }
 }
 
 function getLoadMore(doc) {
@@ -176,7 +181,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const repliesContainer = document.querySelector(".replies");
   const isTweet = !!repliesContainer;
   const containerClass = isTweet ? ".replies" : ".timeline";
-  const itemClass = containerClass + " > div:not(.top-ref)";
+  const itemClass = containerClass + " > div:not(.top-ref):not(.show-more):not(.timeline-header):not(.timeline-footer)";
   const html = document.documentElement;
   const container = repliesContainer || document.querySelector(containerClass);
   const masonryEl = container?.querySelector(".gallery-masonry");
@@ -220,16 +225,18 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           const knownHrefs = getHrefs(`${itemClass} .tweet-link`);
           for (const item of doc.querySelectorAll(itemClass)) {
-            if (item.className === "timeline-item show-more" || isDuplicate(item, knownHrefs)) continue;
+            if (isDuplicate(item, knownHrefs)) continue;
             isTweet ? container.appendChild(item) : insertBeforeLast(container, item);
           }
         }
 
         loading = false;
-        const newLoadMore = getLoadMore(doc);
-        if (newLoadMore) {
-          isTweet ? container.appendChild(newLoadMore) : insertBeforeLast(container, newLoadMore);
-          if (masonry) newLoadMore.classList.add("masonry-visible");
+        // Some timeline routes return a footer in a 200 response when exhausted.
+        const footer = isTweet ? null : doc.querySelector(".timeline > .timeline-footer");
+        const pagination = getLoadMore(doc) || footer;
+        if (pagination) {
+          isTweet ? container.appendChild(pagination) : insertBeforeLast(container, pagination);
+          if (masonry) pagination.classList.add("masonry-visible");
         }
       })
       .catch(err => {
