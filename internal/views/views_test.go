@@ -620,7 +620,7 @@ func TestRSS(t *testing.T) {
 	feeds := map[string]string{
 		"timeline": RenderTimelineRss(profile, cfg, &p, false),
 		"list":     RenderListRss(profile.Tweets.Content, types.List{ID: "1", Name: "L & M", Username: "o"}, cfg, &p),
-		"notes":    RenderCommunityNotesRss(profile.Tweets.Content, "new", cfg, &p),
+		"notes":    RenderCommunityNotesRss(profile.Tweets.Content, "new", cfg, &p, false),
 		"search":   RenderSearchRss(profile.Tweets.Content, `"q" & r`, "", cfg, &p),
 		"open":     GenerateOpenSearchXML("Nitter", "nitter.net", "https://nitter.net/search?q="),
 	}
@@ -694,6 +694,65 @@ func TestRSS(t *testing.T) {
 
 	if got := RenderOembedIframe("https://nitter.net/jack/status/1/embed", 300); !strings.HasPrefix(got, `<iframe src="https://nitter.net/jack/status/1/embed" style="width:100%;max-width:300px;`) {
 		t.Errorf("oembed: %s", got)
+	}
+}
+
+func TestTranslatedCommunityNotesRss(t *testing.T) {
+	cfg, err := config.FromFile(config.File{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := prefs.Defaults
+	p.HideCommunityNotes = true
+	post := &types.Tweet{
+		ID: 10, User: types.User{Username: "jack"},
+		Text: "Original post", Translation: "Translated &amp; checked",
+		Note: "Original note", NoteTranslation: "Translated note",
+		Quote: &types.Tweet{
+			ID: 11, User: types.User{Username: "quoted"},
+			Available: true, Text: "Untranslated quote",
+			Note: "Original quoted note", NoteTranslation: "Translated quoted note",
+		},
+	}
+	tweets := []types.Tweets{{post}}
+	for _, tt := range []struct {
+		name, tab, suffix, title string
+		translated               bool
+		body                     []string
+	}{
+		{"original", "helpful", "/i/communitynotes/rss", "Original post", false,
+			[]string{"Original post", "Original note", "Original quoted note", "Untranslated quote"}},
+		{"translated", "new", "/i/communitynotes/new/rss?tr=1", "Translated & checked", true,
+			[]string{"Translated &amp; checked", "Translated note", "Translated quoted note", "Untranslated quote"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var feed struct {
+				Channel struct {
+					Self struct {
+						Href string `xml:"href,attr"`
+					} `xml:"http://www.w3.org/2005/Atom link"`
+					Item struct {
+						Title       string `xml:"title"`
+						Description string `xml:"description"`
+					} `xml:"item"`
+				} `xml:"channel"`
+			}
+			rss := RenderCommunityNotesRss(tweets, tt.tab, cfg, &p, tt.translated)
+			if err := xml.Unmarshal([]byte(rss), &feed); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := feed.Channel.Self.Href, cfg.URLPrefix()+tt.suffix; got != want {
+				t.Errorf("self link = %q, want %q", got, want)
+			}
+			if item := feed.Channel.Item; item.Title != tt.title {
+				t.Errorf("title = %q, want %q", item.Title, tt.title)
+			}
+			for _, want := range tt.body {
+				if !strings.Contains(feed.Channel.Item.Description, want) {
+					t.Errorf("description missing %q: %s", want, feed.Channel.Item.Description)
+				}
+			}
+		})
 	}
 }
 

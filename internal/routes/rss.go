@@ -66,7 +66,7 @@ func (c *ctx) timelineRss(q types.Query) (types.Rss, error) {
 	return types.Rss{Feed: feed, Cursor: profile.Tweets.Bottom}, nil
 }
 
-func (c *ctx) communityNotesRss(tab string) (types.Rss, error) {
+func (c *ctx) communityNotesRss(tab string, translate bool) (types.Rss, error) {
 	var tl types.Timeline
 	var err error
 	if tab == "new" {
@@ -85,7 +85,7 @@ func (c *ctx) communityNotesRss(tab string) (types.Rss, error) {
 			cursor = strconv.FormatInt(last[len(last)-1].ID, 10)
 		}
 	}
-	return types.Rss{Feed: views.RenderCommunityNotesRss(tl.Content, tab, c.s.cfg, c.prefs()), Cursor: cursor}, nil
+	return types.Rss{Feed: views.RenderCommunityNotesRss(tl.Content, tab, c.s.cfg, c.prefs(), translate), Cursor: cursor}, nil
 }
 
 func (c *ctx) respRss(rss types.Rss, page string) error {
@@ -150,8 +150,13 @@ func (s *Server) rssRoutes() {
 			if !s.cfg.EnableRSSCommunityNotes || s.cfg.GuestAuth {
 				return disabled(c)
 			}
-			return c.cachedRss(rssKey("communitynotes", tab, ""), "Community Notes", func() (types.Rss, error) {
-				return c.communityNotesRss(tab)
+			translate := s.cfg.EnableTranslation && c.param("tr") == "1"
+			key := rssKey("communitynotes", tab, "")
+			if translate {
+				key += ":tr"
+			}
+			return c.cachedRss(key, "Community Notes", func() (types.Rss, error) {
+				return c.communityNotesRss(tab, translate)
 			})
 		})
 	}

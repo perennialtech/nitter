@@ -26,7 +26,15 @@ func textFuncs() texttemplate.FuncMap {
 	}
 }
 
-func rssTitle(t *types.Tweet, retweet string) string {
+// rssText selects a translation already included in the timeline response.
+func rssText(original, translation string, translate bool) string {
+	if translate && translation != "" {
+		return formatters.SanitizeXML(translation)
+	}
+	return original
+}
+
+func rssTitle(t *types.Tweet, retweet string, translate bool) string {
 	prefix := ""
 	switch {
 	case t.Pinned:
@@ -37,7 +45,7 @@ func rssTitle(t *types.Tweet, retweet string) string {
 		prefix = "R to @" + t.Reply[0] + ": "
 	}
 	// Nim's splitWhitespace splits on ASCII whitespace only
-	words := strings.FieldsFunc(formatters.StripHTML(t.Text, false), func(r rune) bool {
+	words := strings.FieldsFunc(formatters.StripHTML(rssText(t.Text, t.Translation, translate), false), func(r rune) bool {
 		return strings.ContainsRune(" \t\v\r\n\f", r)
 	})
 	text := xmlEscape(strings.Join(words, " "))
@@ -89,30 +97,31 @@ type rssMediaItem struct {
 }
 
 type rssTweetData struct {
-	T       *types.Tweet
-	Prefix  string
-	Text    string
-	Media   []rssMediaItem
-	Card    *rssCardData
-	Poll    []string
-	Votes   string
-	Status  string
-	Note    string
-	Quote   *types.Tweet
-	QLink   string
-	Cfg     *config.Config
-	Prefs   *prefs.Prefs
-	Article *types.ArticlePreview
+	T         *types.Tweet
+	Prefix    string
+	Text      string
+	Media     []rssMediaItem
+	Card      *rssCardData
+	Poll      []string
+	Votes     string
+	Status    string
+	Note      string
+	Quote     *types.Tweet
+	QLink     string
+	Cfg       *config.Config
+	Prefs     *prefs.Prefs
+	Article   *types.ArticlePreview
+	Translate bool
 }
 
 // rssTweet renders an item description (renderRssTweet).
-func rssTweet(t *types.Tweet, cfg *config.Config, p *prefs.Prefs) string {
+func rssTweet(t *types.Tweet, cfg *config.Config, p *prefs.Prefs, translate bool) string {
 	if t.Retweet != nil {
 		t = t.Retweet
 	}
 	prefix := cfg.URLPrefix()
-	d := rssTweetData{T: t, Prefix: prefix, Cfg: cfg, Prefs: p, Article: t.ArticlePreview}
-	if text := formatters.ReplaceURLs(t.Text, p, prefix); text != "" {
+	d := rssTweetData{T: t, Prefix: prefix, Cfg: cfg, Prefs: p, Article: t.ArticlePreview, Translate: translate}
+	if text := formatters.ReplaceURLs(rssText(t.Text, t.Translation, translate), p, prefix); text != "" {
 		d.Text = strings.ReplaceAll(text, "\n", "<br>\n")
 	}
 	switch {
@@ -156,7 +165,7 @@ func rssTweet(t *types.Tweet, cfg *config.Config, p *prefs.Prefs) string {
 		d.Status = xmlEscape(poll.Status)
 	}
 	if t.Note != "" && !p.HideCommunityNotes {
-		d.Note = formatters.ReplaceURLs(t.Note, p, prefix)
+		d.Note = formatters.ReplaceURLs(rssText(t.Note, t.NoteTranslation, translate), p, prefix)
 	}
 	if t.Quote != nil && t.Quote.Available {
 		d.Quote = t.Quote
@@ -171,7 +180,7 @@ type rssItem struct {
 	GlobalGUID                                  bool
 }
 
-func rssItems(threads []types.Tweets, cfg *config.Config, p *prefs.Prefs, userID string) []rssItem {
+func rssItems(threads []types.Tweets, cfg *config.Config, p *prefs.Prefs, userID string, translate bool) []rssItem {
 	prefix := cfg.URLPrefix()
 	var links []string
 	var items []rssItem
@@ -191,9 +200,9 @@ func rssItems(threads []types.Tweets, cfg *config.Config, p *prefs.Prefs, userID
 			}
 			links = append(links, link)
 			items = append(items, rssItem{
-				Title:       rssTitle(t, retweet),
+				Title:       rssTitle(t, retweet, translate),
 				Username:    t.User.Username,
-				Description: strings.Trim(rssTweet(t, cfg, p), "\n"),
+				Description: strings.Trim(rssTweet(t, cfg, p, translate), "\n"),
 				PubDate:     formatters.Rfc822Time(t.Time),
 				Link:        prefix + link,
 				ID:          t.ID,
@@ -250,7 +259,7 @@ func RenderTimelineRss(profile types.Profile, cfg *config.Config, p *prefs.Prefs
 		Description: rssDescription(handle, cfg),
 		Pic:         utils.PicURL(formatters.UserPic(profile.User.UserPic, "_400x400")),
 		HasTweets:   len(tweets) > 0,
-		Items:       rssItems(tweets, cfg, p, profile.User.ID),
+		Items:       rssItems(tweets, cfg, p, profile.User.ID, false),
 	})
 }
 
@@ -261,25 +270,30 @@ func RenderListRss(tweets []types.Tweets, l types.List, cfg *config.Config, p *p
 		Link:        link,
 		Title:       xmlEscape(l.Name) + " / @" + l.Username,
 		Description: rssDescription(l.Name+" by @"+l.Username, cfg),
-		Items:       rssItems(tweets, cfg, p, ""),
+		Items:       rssItems(tweets, cfg, p, "", false),
 	})
 }
 
 // RenderCommunityNotesRss renders the community notes feed; tab is
 // "helpful" or "new". Notes are always shown, whatever the preferences.
-func RenderCommunityNotesRss(tweets []types.Tweets, tab string, cfg *config.Config, p *prefs.Prefs) string {
+func RenderCommunityNotesRss(tweets []types.Tweets, tab string, cfg *config.Config, p *prefs.Prefs, translate bool) string {
 	path, label := "/i/communitynotes", "Rated Helpful"
 	if tab == "new" {
 		path, label = "/i/communitynotes/new", "New"
+	}
+	selfLink := cfg.URLPrefix() + path + "/rss"
+	if translate {
+		selfLink += "?tr=1"
 	}
 	withNotes := *p
 	withNotes.HideCommunityNotes = false
 	return execText("communityNotesRss", rssChannel{
 		Prefix:      cfg.URLPrefix(),
 		Link:        path,
+		SelfLink:    xmlEscape(selfLink),
 		Title:       label,
 		Description: rssDescription("Community Notes ("+label+")", cfg),
-		Items:       rssItems(tweets, cfg, &withNotes, ""),
+		Items:       rssItems(tweets, cfg, &withNotes, "", translate),
 	})
 }
 
@@ -290,7 +304,7 @@ func RenderSearchRss(tweets []types.Tweets, name, param string, cfg *config.Conf
 		Link:        cfg.URLPrefix() + "/search",
 		Title:       escName,
 		Description: rssDescription("Search \""+name+"\"", cfg),
-		Items:       rssItems(tweets, cfg, p, ""),
+		Items:       rssItems(tweets, cfg, p, "", false),
 	})
 }
 

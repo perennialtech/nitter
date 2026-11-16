@@ -73,7 +73,7 @@
 <blockquote>
 <b>{{.User.Fullname}} (@{{.User.Username}})</b>
 <p>
-{{rssTweet . $.Cfg $.Prefs}}
+{{rssTweet . $.Cfg $.Prefs $.Translate}}
 </p>
 <footer>
 — <cite><a href="{{$.QLink}}">{{$.QLink}}</a>
@@ -135,7 +135,7 @@
 
 {{define "communityNotesRss" -}}
 {{template "rssHeader"}}  <channel>
-    <atom:link href="{{.Prefix}}{{.Link}}/rss" rel="self" type="application/rss+xml" />
+    <atom:link href="{{.SelfLink}}" rel="self" type="application/rss+xml" />
     <title>Community Notes - {{.Title}}</title>
     <link>{{.Prefix}}{{.Link}}</link>
     <description>{{.Description}}</description>
