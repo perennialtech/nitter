@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/perennialtech/nitter/internal/api"
+	"github.com/perennialtech/nitter/internal/cache"
 	"github.com/perennialtech/nitter/internal/flags"
 	"github.com/perennialtech/nitter/internal/formatters"
 	"github.com/perennialtech/nitter/internal/types"
@@ -74,6 +75,11 @@ func (s *Server) statusRoutes() {
 			return c.fail(http.StatusNotFound, msg)
 		}
 		t := conv.Tweet
+		if t.CommunityID != "" && t.CommunityName == "" && !flags.GuestAuth {
+			if community, err := cache.Community(ctx, t.CommunityID); err == nil {
+				t.CommunityName = community.Name
+			}
+		}
 		switch tr := c.param("tr"); {
 		case tr == "1" || p.AutoTranslate:
 			api.TranslateTweet(ctx, t)

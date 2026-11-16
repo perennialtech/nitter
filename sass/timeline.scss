@@ -63,6 +63,14 @@
   padding: 0;
 }
 
+.search-tabs {
+  padding: 0 4px;
+
+  .tab-item a {
+    padding: 8px 6px;
+  }
+}
+
 .tab-item {
   flex: 1 1 0;
   text-align: center;

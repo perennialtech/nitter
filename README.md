@@ -28,6 +28,10 @@ available under **Preferences → Theme**. Prebuilt images are published to
 When translation is enabled, append `?tr=1` to `/i/communitynotes/rss` or
 `/i/communitynotes/new/rss` to use translations already supplied by X.
 
+Search defaults to Users. Enter a handle to jump to its profile, or select
+Tweets to search posts. The Communities tab searches communities and their
+Top and Latest posts using account sessions.
+
 ## Resources
 
 The wiki contains

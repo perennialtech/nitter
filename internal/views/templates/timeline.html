@@ -58,6 +58,27 @@
 </div>
 {{- end}}
 
+{{- define "communitySearchCard" -}}
+<div class="timeline-item list-result">
+  <a class="tweet-link" href="{{url .URL}}"></a>
+  <a class="list-result-banner" href="{{url .URL}}" aria-hidden="true" tabindex="-1">
+    {{- with .C.Banner}}{{genImg . $.P}}{{end -}}
+  </a>
+  <div class="list-result-body">
+    <div class="list-result-title fullname-and-username">
+      <a class="list-name fullname" href="{{url .URL}}">{{.C.Name}}</a>
+      <span class="list-members">{{.Members}}</span>
+    </div>
+    {{- with .C.Category}}<div class="list-result-description">{{.}}</div>{{end}}
+    {{- with .C.Facepiles}}
+    <div class="list-result-context">
+      {{- range .}}{{genImg . $.P "list-facepile"}}{{end}}
+    </div>
+    {{- end}}
+  </div>
+</div>
+{{- end}}
+
 {{- define "listCard" -}}
 <div class="timeline-item list-result">
   <a class="tweet-link" href="{{url .URL}}"></a>

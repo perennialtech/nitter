@@ -2,13 +2,16 @@
 {{- define "navbar" -}}
 <nav>
   <div class="inner-nav">
-    <div class="nav-item">
+    <div class="nav-item nav-home">
+      <a class="site-logo" href="/" aria-label="{{.Title}} home"></a>
       <a class="site-name" href="/">{{.Title}}</a>
       {{- if .ShowTrends}}<a class="nav-trends" href="/i/trends">Trends</a>{{end}}
     </div>
-    <a href="/"><img class="site-logo" src="/logo.png" alt="Logo"></a>
+    <form class="nav-search" role="search" method="get" action="/search" autocomplete="off">
+      <input type="search" name="q" aria-label="Search Nitter" placeholder="Search" dir="auto">
+      <button type="submit" aria-label="Search">{{icon "search"}}</button>
+    </form>
     <div class="nav-item right">
-      {{- icon "search" "title" "Search" "href" "/search"}}
       {{- if .ShowNotes}}{{icon "group" "title" "Community Notes" "href" "/i/communitynotes"}}{{end}}
       {{- with .RSS}}{{icon "rss" "title" "RSS Feed" "href" .}}{{end}}
       {{- icon "bird" "title" "Open in X" "href" .Canonical}}
@@ -21,7 +24,7 @@
 
 {{- define "head" -}}
 <head>
-  <link rel="stylesheet" type="text/css" href="/css/style.css?v=108">
+  <link rel="stylesheet" type="text/css" href="/css/style.css?v=109">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/fontello.woff2?73825041" crossorigin="anonymous">
   {{- with .Theme}}
   <link rel="stylesheet" type="text/css" href="{{url .}}">
@@ -44,6 +47,7 @@
   {{- if .HLS}}
   <script src="/js/hlsPlayback.js?v=3" defer=""></script>
   {{- end}}
+  <script src="/js/searchShortcuts.js" defer=""></script>
   {{- if .InfiniteScroll}}
   <script src="/js/infiniteScroll.js" defer=""></script>
   {{- end}}

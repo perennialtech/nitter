@@ -29,14 +29,14 @@ class SearchProductTest(BaseTestCase):
     @parameterized.expand(active_tabs)
     def test_active_tab(self, page, expected_active):
         self.open_nitter(page)
-        active = self.get_text(Search.tab_active)
-        self.assert_equal(active.strip(), expected_active)
+        active = self.find_elements(Search.tab_active)
+        self.assert_equal(active[-1].text.strip(), expected_active)
 
     def test_all_tabs_present(self):
         self.open_nitter('search?f=tweets&q=nasa')
         tabs = self.find_elements(Search.tab_item)
         labels = [t.text.strip() for t in tabs]
-        self.assert_equal(labels, ['Top', 'Latest', 'Media', 'Users', 'Lists'])
+        self.assert_equal(labels, ['Tweets', 'Users', 'Lists', 'Communities', 'Top', 'Latest', 'Media'])
 
     @parameterized.expand(results_pages)
     def test_results_render(self, page):

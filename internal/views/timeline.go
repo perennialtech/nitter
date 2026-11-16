@@ -218,6 +218,15 @@ func RenderTimelineLists(results types.Result[types.ListSearchResult], p *prefs.
 	}))
 }
 
+func RenderTimelineCommunities(results types.Result[types.Community], p *prefs.Prefs, path string) template.HTML {
+	return exec("timelineResults", timelineResults(results, path, func(c types.Community) template.HTML {
+		return exec("communitySearchCard", map[string]any{
+			"C": c, "P": p, "URL": "/i/communities/" + c.ID,
+			"Members": "· " + insertSep(c.MemberCount) + " members",
+		})
+	}))
+}
+
 func filterThreads(threads []types.Tweets, p *prefs.Prefs) []types.Tweets {
 	var retweets []int64
 	var result []types.Tweets
