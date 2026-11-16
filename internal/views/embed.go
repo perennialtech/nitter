@@ -19,9 +19,12 @@ func renderEmbedPage(head, body template.HTML) string {
 
 // RenderVideoEmbed renders the /i/videos/<id> player page for a tweet's
 // first video. The tweet must have a video.
-func RenderVideoEmbed(t *types.Tweet, cfg *config.Config, r *http.Request) string {
+func RenderVideoEmbed(t *types.Tweet, cfg *config.Config, r *http.Request, requestPrefs *prefs.Prefs) string {
 	video := t.Videos()[0]
-	p := &prefs.Prefs{HlsPlayback: true, Mp4Playback: true, ProxyVideos: prefs.Defaults.ProxyVideos}
+	p := &prefs.Prefs{
+		HlsPlayback: true, Mp4Playback: true, ProxyVideos: prefs.Defaults.ProxyVideos,
+		DirectMedia: requestPrefs.DirectMedia, DisableVideoPreload: requestPrefs.DisableVideoPreload,
+	}
 	head := RenderHead(p, cfg, r, PageOpts{
 		Video: formatters.VideoEmbed(cfg, t.ID), Images: []string{video.Thumb},
 	})

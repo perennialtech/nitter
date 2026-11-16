@@ -15,8 +15,9 @@ available under **Preferences → Theme**. Prebuilt images are published to
 
 - No JavaScript required
 - Zero ads
-- All requests go through the backend, client never talks to Twitter
-- Prevents Twitter from tracking your IP or JavaScript fingerprint
+- Nitter proxies media by default. Visitors who enable `directMedia` send
+  media requests directly to Twitter's CDN.
+- The backend fetches Twitter pages without exposing your browser fingerprint
 - Uses Twitter's unofficial API (no developer account required)
 - Lightweight
 - RSS feeds (instance-specific, often disabled due to abuse)

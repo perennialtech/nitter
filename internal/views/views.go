@@ -99,24 +99,24 @@ const (
 	mediumWebp = "?name=medium&format=webp"
 )
 
-func smallPic(u string) string {
+func smallPic(u string, p *prefs.Prefs) string {
 	if u == "" {
 		return ""
 	}
 	if !strings.Contains(u, "?") && !strings.HasSuffix(u, "placeholder.png") {
 		u += smallWebp
 	}
-	return utils.PicURL(u)
+	return utils.MediaPicURL(u, p.DirectMedia)
 }
 
-func mediumPic(u string) string {
+func mediumPic(u string, p *prefs.Prefs) string {
 	if u == "" {
 		return ""
 	}
 	if !strings.Contains(u, "?") && !strings.HasSuffix(u, "placeholder.png") {
 		u += mediumWebp
 	}
-	return utils.PicURL(u)
+	return utils.MediaPicURL(u, p.DirectMedia)
 }
 
 // insertSep formats n with thousands separators, like Nim's insertSep($n, ',').
@@ -257,8 +257,8 @@ func genNumberInput(pref, label, state, placeholder, class string, autofocus boo
 }
 
 // genImg renders renderutils.genImg; opt is the optional class and alt text.
-func genImg(u string, opt ...string) template.HTML {
-	d := map[string]string{"Src": utils.PicURL(u)}
+func genImg(u string, p *prefs.Prefs, opt ...string) template.HTML {
+	d := map[string]string{"Src": utils.MediaPicURL(u, p.DirectMedia)}
 	if len(opt) > 0 {
 		d["Class"] = opt[0]
 	}

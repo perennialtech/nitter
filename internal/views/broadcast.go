@@ -15,6 +15,16 @@ import (
 )
 
 func streamSource(p *prefs.Prefs, m3u8 string) string {
+	if p.DirectMedia {
+		if direct := utils.DirectTwimgURL(m3u8); direct != "" {
+			return direct
+		}
+		// Broadcast cards use a local playlist URL. Carry the request's
+		// direct setting through to that request as well.
+		if strings.HasPrefix(m3u8, "/i/broadcasts/") {
+			return m3u8 + "?directMedia=on"
+		}
+	}
 	if p.ProxyVideos && strings.HasPrefix(m3u8, "http") {
 		return utils.VidURL(m3u8)
 	}
@@ -50,7 +60,7 @@ func RenderBroadcast(bc types.Broadcast, p *prefs.Prefs, path string) template.H
 		"BC":        bc,
 		"P":         p,
 		"Live":      live,
-		"Thumb":     utils.PicURL(bc.Thumb),
+		"Thumb":     utils.MediaPicURL(bc.Thumb, p.DirectMedia),
 		"Source":    streamSource(p, bc.M3u8URL),
 		"Start":     strconv.Itoa(bc.ReplayStart),
 		"State":     stateText(live, bc.EndTime, bc.State),
@@ -65,8 +75,9 @@ func RenderBroadcast(bc types.Broadcast, p *prefs.Prefs, path string) template.H
 }
 
 type participantData struct {
-	P    types.SpaceParticipant
-	Role string
+	P     types.SpaceParticipant
+	Role  string
+	Prefs *prefs.Prefs
 }
 
 // RenderSpace renders an audio space.
@@ -82,10 +93,10 @@ func RenderSpace(sp types.AudioSpace, p *prefs.Prefs, path string) template.HTML
 		if a.Username == sp.Creator.Username {
 			role = "Host"
 		}
-		participants = append(participants, participantData{a, role})
+		participants = append(participants, participantData{a, role, p})
 	}
 	for _, s := range sp.Speakers {
-		participants = append(participants, participantData{s, ""})
+		participants = append(participants, participantData{s, "", p})
 	}
 	d := map[string]any{
 		"SP":           sp,

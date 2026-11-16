@@ -122,7 +122,7 @@ func RenderHead(p *prefs.Prefs, cfg *config.Config, r *http.Request, o PageOpts)
 	}
 	for _, u := range o.Images {
 		if u != "" {
-			d.Images = append(d.Images, cfg.URLPrefix()+utils.PicURL(u))
+			d.Images = append(d.Images, utils.AbsoluteMediaURL(cfg.URLPrefix(), utils.MediaPicURL(u, p.DirectMedia)))
 		}
 	}
 	return exec("head", d)

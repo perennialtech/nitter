@@ -92,7 +92,7 @@ func (s *Server) statusRoutes() {
 			video = formatters.VideoEmbed(s.cfg, t.ID)
 		case len(t.Media) > 0 && t.Media[0].Kind == types.GifMedia:
 			images = []string{t.Media[0].Thumb()}
-			video = utils.PicURL(t.Media[0].Gif.URL)
+			video = utils.MediaPicURL(t.Media[0].Gif.URL, p.DirectMedia)
 		case t.Card != nil && t.Card.Image != "":
 			images = []string{t.Card.Image}
 		case t.Card != nil && t.Card.Video != nil:

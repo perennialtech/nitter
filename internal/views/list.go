@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/perennialtech/nitter/internal/prefs"
 	"github.com/perennialtech/nitter/internal/types"
 	"github.com/perennialtech/nitter/internal/utils"
 )
@@ -19,10 +20,10 @@ func RenderListTabs(q types.Query, path string) template.HTML {
 }
 
 // RenderList renders a list page around body.
-func RenderList(body template.HTML, q types.Query, l types.List) template.HTML {
+func RenderList(body template.HTML, q types.Query, l types.List, p *prefs.Prefs) template.HTML {
 	return exec("list", map[string]any{
 		"L":         l,
-		"BannerURL": utils.PicURL(l.Banner),
+		"BannerURL": utils.MediaPicURL(l.Banner, p.DirectMedia),
 		"Header":    "\"" + l.Name + "\" by @" + l.Username,
 		"Tabs":      RenderListTabs(q, "/i/lists/"+l.ID),
 		"Body":      body,
@@ -69,21 +70,22 @@ func RenderHashtagHeader(c types.Community, tag string) template.HTML {
 }
 
 // RenderCommunityAbout renders a community's about tab.
-func RenderCommunityAbout(c types.Community, moderators []types.User) template.HTML {
+func RenderCommunityAbout(c types.Community, moderators []types.User, p *prefs.Prefs) template.HTML {
 	return exec("communityAbout", map[string]any{
 		"C":          c,
 		"Path":       communityPath(c),
 		"Created":    "Created " + c.CreatedAt.Format("January 2, 2006") + " by ",
 		"Moderators": moderators,
+		"P":          p,
 	})
 }
 
 // RenderCommunity renders a community page around nav and body.
-func RenderCommunity(body, nav template.HTML, c types.Community) template.HTML {
+func RenderCommunity(body, nav template.HTML, c types.Community, p *prefs.Prefs) template.HTML {
 	return exec("community", map[string]any{
 		"C":         c,
 		"Path":      communityPath(c),
-		"BannerURL": utils.PicURL(c.Banner),
+		"BannerURL": utils.MediaPicURL(c.Banner, p.DirectMedia),
 		"Members":   insertSep(c.MemberCount),
 		"Nav":       nav,
 		"Body":      body,

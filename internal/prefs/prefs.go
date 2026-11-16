@@ -93,6 +93,10 @@ var Categories = []Category{
 		checkbox("hlsPlayback", false, "Enable HLS video streaming (requires JavaScript)"),
 		checkbox("proxyVideos", true, "Proxy video streaming through the server (might be slow)").withDoc(
 			"When off, browsers load videos from Twitter's servers directly."),
+		checkbox("directMedia", false, "Load Twitter images and videos directly").withDoc(
+			"Bypasses the Nitter proxy for twimg.com media. Twitter's media servers can see the viewer's IP address."),
+		checkbox("disableVideoPreload", false, "Disable video preloading").withDoc(
+			"Ask the browser to load video only on playback. GIFs set to autoplay still begin immediately."),
 		checkbox("muteVideos", false, "Mute videos by default"),
 		checkbox("autoplayGifs", true, "Autoplay gifs"),
 		checkbox("compactGallery", false, "Compact media gallery (no profile info or text)"),
@@ -141,6 +145,8 @@ type Prefs struct {
 	Mp4Playback         bool
 	HlsPlayback         bool
 	ProxyVideos         bool
+	DirectMedia         bool
+	DisableVideoPreload bool
 	MuteVideos          bool
 	AutoplayGifs        bool
 	CompactGallery      bool
@@ -193,6 +199,10 @@ func (p *Prefs) field(name string) any {
 		return &p.HlsPlayback
 	case "proxyVideos":
 		return &p.ProxyVideos
+	case "directMedia":
+		return &p.DirectMedia
+	case "disableVideoPreload":
+		return &p.DisableVideoPreload
 	case "muteVideos":
 		return &p.MuteVideos
 	case "autoplayGifs":

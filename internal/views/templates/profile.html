@@ -2,7 +2,7 @@
 {{- define "userCard" -}}
 <div class="profile-card">
   <div class="profile-card-info">
-    <a class="profile-card-avatar" href="{{url .AvatarURL}}" target="_blank">{{genImg .Avatar}}</a>
+    <a class="profile-card-avatar" href="{{url .AvatarURL}}" target="_blank">{{genImg .Avatar .P}}</a>
     <div class="profile-card-tabs-name">
       {{- linkUser .U "profile-card-fullname"}}
       {{- verifiedIcon .U}}
@@ -57,7 +57,7 @@
   <label for="photo-rail-grid-toggle" class="photo-rail-header-mobile">{{icon "picture" "label" .Label}}{{icon "down"}}</label>
   <div class="photo-rail-grid">
     {{- range .Photos}}
-    <a href="{{url .Href}}">{{genImg .Pic}}</a>
+    <a href="{{url .Href}}">{{genImg .Pic $.P}}</a>
     {{- end}}
   </div>
 </div>

@@ -252,7 +252,7 @@ func (s *Server) timelineRoutes() {
 		if info.Username == "" {
 			return c.fail(http.StatusNotFound, `User "`+name+`" not found`)
 		}
-		return c.page(views.RenderAboutAccount(info), views.PageOpts{TitleText: "About @" + info.Username})
+		return c.page(views.RenderAboutAccount(info, c.prefs()), views.PageOpts{TitleText: "About @" + info.Username})
 	})
 
 	s.get("/@name/@kind/?", func(c *ctx) error {

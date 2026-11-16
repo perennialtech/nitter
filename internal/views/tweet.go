@@ -18,12 +18,12 @@ import (
 
 // RenderMiniAvatar renders a user's small avatar.
 func RenderMiniAvatar(u types.User, p *prefs.Prefs) template.HTML {
-	return genImg(formatters.UserPic(u.UserPic, "_mini"), avatarClass(p)+" mini")
+	return genImg(formatters.UserPic(u.UserPic, "_mini"), p, avatarClass(p)+" mini")
 }
 
-func renderArticleCard(a *types.ArticlePreview) template.HTML {
+func renderArticleCard(a *types.ArticlePreview, p *prefs.Prefs) template.HTML {
 	return exec("articleCard", map[string]any{
-		"URL": "/i/article/" + strconv.FormatInt(a.TweetID, 10), "A": a,
+		"URL": "/i/article/" + strconv.FormatInt(a.TweetID, 10), "A": a, "P": p,
 	})
 }
 
@@ -32,6 +32,7 @@ func renderReply(t *types.Tweet) template.HTML {
 }
 
 type headerData struct {
+	P                       *prefs.Prefs
 	T, Full                 *types.Tweet
 	Pinned                  bool
 	PinnedLabel             string
@@ -40,17 +41,17 @@ type headerData struct {
 	CommunityLink           string
 }
 
-func renderPhotoAttachment(photo types.Photo, bigThumb bool) template.HTML {
+func renderPhotoAttachment(photo types.Photo, p *prefs.Prefs, bigThumb bool) template.HTML {
 	thumb := photo.URL
 	switch {
-	case strings.Contains(photo.URL, "name="):
+	case strings.Contains(photo.URL, "name=") || (p.DirectMedia && strings.Contains(photo.URL, "?")):
 	case bigThumb:
 		thumb += mediumWebp
 	default:
 		thumb += smallWebp
 	}
 	return exec("photoAttachment", map[string]any{
-		"Orig": utils.OrigPicURL(photo.URL), "Thumb": utils.PicURL(thumb), "Alt": photo.AltText, "Size": photo.Size,
+		"Orig": utils.MediaOrigPicURL(photo.URL, p.DirectMedia), "Thumb": utils.MediaPicURL(thumb, p.DirectMedia), "Alt": photo.AltText, "Size": photo.Size,
 	})
 }
 
@@ -93,10 +94,15 @@ func bestVariant(v types.Video, t types.VideoType, key func(types.VideoVariant) 
 	return best.URL, true
 }
 
-func videoDownloadURL(v types.Video) string {
+func videoDownloadURL(v types.Video, p *prefs.Prefs) string {
 	best, ok := bestVariant(v, types.VideoMp4, func(x types.VideoVariant) int { return x.Bitrate })
 	if !ok {
 		return ""
+	}
+	if p.DirectMedia {
+		if direct := utils.DirectTwimgURL(best); direct != "" {
+			return direct
+		}
 	}
 	if strings.HasPrefix(best, "http") {
 		return utils.VidURL(best)
@@ -112,6 +118,7 @@ type videoData struct {
 	MP4         bool
 	Source      string
 	Muted       bool
+	NoPreload   bool
 	Duration    string
 	DownloadURL string
 }
@@ -120,12 +127,17 @@ func renderVideoAttachment(v types.Video, p *prefs.Prefs, path string, bigThumb 
 	playbackType := v.PlaybackType
 	if !p.ProxyVideos && hasMp4URL(v) {
 		playbackType = types.VideoMp4
+	} else if p.DirectMedia && p.Mp4Playback {
+		mp4, _ := bestVariant(v, types.VideoMp4, func(x types.VideoVariant) int { return x.Resolution })
+		if utils.DirectTwimgURL(mp4) != "" {
+			playbackType = types.VideoMp4
+		}
 	}
-	d := videoData{V: v, Muted: p.MuteVideos, MP4: playbackType == types.VideoMp4}
+	d := videoData{V: v, Muted: p.MuteVideos, NoPreload: p.DisableVideoPreload, MP4: playbackType == types.VideoMp4}
 	if bigThumb {
-		d.Thumb = mediumPic(v.Thumb)
+		d.Thumb = mediumPic(v.Thumb, p)
 	} else {
-		d.Thumb = smallPic(v.Thumb)
+		d.Thumb = smallPic(v.Thumb, p)
 	}
 	switch {
 	case !v.Available:
@@ -139,16 +151,13 @@ func renderVideoAttachment(v types.Video, p *prefs.Prefs, path string, bigThumb 
 	default:
 		d.Playable = true
 		vidURL, _ := bestVariant(v, playbackType, func(x types.VideoVariant) int { return x.Resolution })
-		d.Source = vidURL
-		if p.ProxyVideos && strings.HasPrefix(vidURL, "http") {
-			d.Source = utils.VidURL(vidURL)
-		}
+		d.Source = streamSource(p, vidURL)
 		if v.DurationMs > 0 {
 			d.Duration = formatters.Duration(v.DurationMs)
 		}
 	}
 	if v.Available {
-		d.DownloadURL = videoDownloadURL(v)
+		d.DownloadURL = videoDownloadURL(v, p)
 	}
 	return exec("videoAttachment", d)
 }
@@ -164,7 +173,7 @@ func RenderVideo(v types.Video, p *prefs.Prefs, path string, bigThumb bool) temp
 
 func renderGifAttachment(g types.Gif, p *prefs.Prefs, path string) template.HTML {
 	d := map[string]any{
-		"G": g, "P": p, "Thumb": smallPic(g.Thumb), "Src": utils.PicURL(g.URL),
+		"G": g, "P": p, "Thumb": smallPic(g.Thumb, p), "Src": utils.MediaPicURL(g.URL, p.DirectMedia),
 	}
 	if !p.Mp4Playback {
 		d["Disabled"] = renderVideoDisabled(types.VideoMp4, path)
@@ -213,7 +222,7 @@ func renderMedia(media []types.Media, p *prefs.Prefs, path string, bigThumb bool
 			}
 			switch m.Kind {
 			case types.PhotoMedia:
-				row.Items = append(row.Items, renderPhotoAttachment(m.Photo, bigThumb))
+				row.Items = append(row.Items, renderPhotoAttachment(m.Photo, p, bigThumb))
 				size = m.Photo.Size
 			case types.VideoMedia:
 				row.Items = append(row.Items, renderVideoAttachment(m.Video, p, path, bigThumb))
@@ -279,8 +288,17 @@ func renderPoll(poll *types.Poll) template.HTML {
 
 var smallCards = []types.CardKind{types.CardApp, types.CardPlayer, types.CardSummary, types.CardStoreLink}
 
+func cardLink(c *types.Card, p *prefs.Prefs) string {
+	// The parser stores the local image URL as the destination for cards
+	// whose image is their only target.
+	if p.DirectMedia && c.URL == utils.PicURL(c.Image) {
+		return utils.MediaPicURL(c.Image, true)
+	}
+	return c.URL
+}
+
 func renderCard(c *types.Card, p *prefs.Prefs, path string) template.HTML {
-	d := map[string]any{"C": c, "URL": formatters.ReplaceURLs(c.URL, p, ""), "Large": ""}
+	d := map[string]any{"C": c, "URL": formatters.ReplaceURLs(cardLink(c, p), p, ""), "Large": "", "P": p}
 	if !slices.Contains(smallCards, c.Kind) {
 		d["Large"] = " large"
 	}
@@ -533,7 +551,7 @@ func RenderTweet(tweet *types.Tweet, p *prefs.Prefs, path string, o TweetOpts) t
 	}
 
 	header := headerData{
-		T: t, Full: full, Pinned: pinned, Retweet: retweet, Retweeter: retweeter,
+		T: t, Full: full, P: p, Pinned: pinned, Retweet: retweet, Retweeter: retweeter,
 		AvatarSize: "_bigger", AvatarClass: avatarClass(p), PinnedLabel: "Pinned Tweet",
 	}
 	if strings.Contains(path, "/i/communities/") {
@@ -592,7 +610,7 @@ func RenderTweet(tweet *types.Tweet, p *prefs.Prefs, path string, o TweetOpts) t
 		d["Card"] = renderCard(t.Card, p, path)
 	}
 	if t.ArticlePreview != nil {
-		d["Article"] = renderArticleCard(t.ArticlePreview)
+		d["Article"] = renderArticleCard(t.ArticlePreview, p)
 	}
 	if len(t.Media) > 0 {
 		d["Media"] = renderMedia(t.Media, p, path, o.BigThumb)

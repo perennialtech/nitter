@@ -108,6 +108,11 @@ func (c *ctx) respRss(rss types.Rss, page string) error {
 
 // cachedRss serves the feed cached at key, or builds, caches and serves it.
 func (c *ctx) cachedRss(key, page string, build func() (types.Rss, error)) error {
+	// A rendered direct feed must not be served to visitors expecting proxy URLs.
+	c.w.Header().Add("Vary", "Cookie")
+	if c.prefs().DirectMedia {
+		key = "direct:" + key
+	}
 	rss, err := cache.Rss(c.r.Context(), key, build)
 	if err != nil {
 		return err

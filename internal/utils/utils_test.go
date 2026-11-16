@@ -48,6 +48,35 @@ func TestIsTwitterURL(t *testing.T) {
 	}
 }
 
+func TestDirectTwimgURL(t *testing.T) {
+	for link, want := range map[string]string{
+		"media/photo.jpg?name=large":                    "https://pbs.twimg.com/media/photo.jpg?name=large",
+		"abs.twimg.com/sticky/default.png":              "https://abs.twimg.com/sticky/default.png",
+		"https://video.twimg.com/video.mp4":             "https://video.twimg.com/video.mp4",
+		"//pbs.twimg.com/media/photo.jpg":               "https://pbs.twimg.com/media/photo.jpg",
+		"http://pbs.twimg.com/photo.jpg":                "https://pbs.twimg.com/photo.jpg",
+		"":                                              "",
+		"/i/broadcasts/1/stream":                        "",
+		"elsewhere.example/photo.jpg":                   "",
+		"https://pbs.twimg.com.example/a.jpg":           "",
+		"https://pbs.twimg.com@elsewhere.example/a.jpg": "",
+		"https://user@pbs.twimg.com/a.jpg":              "",
+		"ftp://pbs.twimg.com/file":                      "",
+		"https://pbs.twimg.com:8443/file":               "",
+	} {
+		if got := DirectTwimgURL(link); got != want {
+			t.Errorf("DirectTwimgURL(%q) = %q, want %q", link, got, want)
+		}
+	}
+	link := "media/photo?name=small&format=jpg#image"
+	if got, want := MediaOrigPicURL(link, true), "https://pbs.twimg.com/media/photo?format=jpg&name=orig#image"; got != want {
+		t.Errorf("original size URL = %q, want %q", got, want)
+	}
+	if link := "https://elsewhere.example/photo.jpg"; MediaPicURL(link, true) != PicURL(link) {
+		t.Error("direct mode should leave non-twimg images behind the proxy")
+	}
+}
+
 func TestPastedTwitterLink(t *testing.T) {
 	for q, want := range map[string]string{
 		"https://x.com/jack/status/20":                "/jack/status/20",

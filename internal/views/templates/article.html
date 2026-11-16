@@ -5,7 +5,7 @@
   {{- if eq .Kind "ApiGif"}}
   <video src="{{url .Vid}}"{{template "mediaSize" .Size}} controls="" autoplay="" loop="" muted=""></video>
   {{- else if eq .Kind "ApiVideo"}}
-  <video src="{{url .Vid}}"{{template "mediaSize" .Size}} controls=""></video>
+  <video src="{{url .Vid}}"{{template "mediaSize" .Size}} controls=""{{if $.P.DisableVideoPreload}} preload="none"{{end}}></video>
   {{- else}}
   <a href="{{url .Orig}}" target="_blank"><img src="{{url .Small}}" alt="{{$.Caption}}" loading="lazy"{{template "mediaSize" .Size}}></a>
   {{- end}}
@@ -29,7 +29,7 @@
     <h1 class="article-title">{{.A.Title}}</h1>
     <div class="article-author">
       <div class="article-author-row">
-        <a class="article-avatar" href="/{{.Author.Username}}">{{genImg (userPic .Author.UserPic "_bigger") .AvatarClass}}</a>
+        <a class="article-avatar" href="/{{.Author.Username}}">{{genImg (userPic .Author.UserPic "_bigger") .P .AvatarClass}}</a>
         <div class="article-author-info">
           <div class="article-author-name">{{linkUser .Author "fullname"}}{{verifiedIcon .Author}}</div>
           <div class="article-author-meta">

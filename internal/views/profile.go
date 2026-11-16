@@ -24,8 +24,9 @@ func RenderUserCard(u types.User, p *prefs.Prefs, info types.AccountInfo) templa
 	}
 	d := map[string]any{
 		"U":         u,
+		"P":         p,
 		"Info":      info,
-		"AvatarURL": utils.PicURL(formatters.UserPic(u.UserPic, "")),
+		"AvatarURL": utils.MediaPicURL(formatters.UserPic(u.UserPic, ""), p.DirectMedia),
 		"Avatar":    formatters.UserPic(u.UserPic, size),
 		"Bio":       template.HTML(formatters.ReplaceURLs(u.Bio, p, "")),
 		"JoinURL":   "/" + u.Username + "/about",
@@ -58,7 +59,7 @@ func RenderUserCard(u types.User, p *prefs.Prefs, info types.AccountInfo) templa
 
 type railPhoto struct{ Href, Pic string }
 
-func renderPhotoRail(profile *types.Profile) template.HTML {
+func renderPhotoRail(profile *types.Profile, p *prefs.Prefs) template.HTML {
 	var photos []railPhoto
 	for i, photo := range profile.PhotoRail {
 		if i == 16 {
@@ -77,17 +78,18 @@ func renderPhotoRail(profile *types.Profile) template.HTML {
 		"MediaURL": "/" + profile.User.Username + "/media",
 		"Label":    insertSep(profile.User.Media) + " Photos and videos",
 		"Photos":   photos,
+		"P":        p,
 	})
 }
 
-func renderBanner(banner string) template.HTML {
+func renderBanner(banner string, p *prefs.Prefs) template.HTML {
 	d := map[string]any{}
 	switch {
 	case banner == "":
 	case strings.HasPrefix(banner, "#"):
 		d["Color"] = template.CSS("background-color: " + banner + ";")
 	default:
-		d["URL"] = utils.PicURL(banner)
+		d["URL"] = utils.MediaPicURL(banner, p.DirectMedia)
 	}
 	return exec("banner", d)
 }
@@ -108,13 +110,13 @@ func RenderProfile(profile *types.Profile, p *prefs.Prefs, path string) template
 		d["Class"] = "profile-tabs media-only"
 	}
 	if !isGallery && !p.HideBanner {
-		d["Banner"] = renderBanner(profile.User.Banner)
+		d["Banner"] = renderBanner(profile.User.Banner, p)
 	}
 	if !isGallery {
 		d["TabClass"] = profileTabClass(p)
 		card := RenderUserCard(profile.User, p, profile.AccountInfo)
 		if len(profile.PhotoRail) > 0 {
-			card += renderPhotoRail(profile)
+			card += renderPhotoRail(profile, p)
 		}
 		d["Card"] = card
 	}
@@ -152,7 +154,7 @@ func RenderUserList(u types.User, results types.UsersTimeline, p *prefs.Prefs, p
 		"Card":     RenderUserCard(u, p, types.AccountInfo{}),
 	}
 	if !p.HideBanner {
-		d["Banner"] = renderBanner(u.Banner)
+		d["Banner"] = renderBanner(u.Banner, p)
 	}
 	tabs := exec("tabs", map[string]any{"Class": "tab", "Tabs": []tab{
 		{activeTab0(activeTab, "Following"), "/" + u.Username + "/following", "Following"},

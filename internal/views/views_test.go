@@ -527,14 +527,14 @@ func TestPages(t *testing.T) {
 	tw := richTweet()
 	for name, s := range map[string]string{
 		"tweet embed": RenderTweetEmbed(tw, "/jack/status/1", &p, cfg, r),
-		"video embed": RenderVideoEmbed(tw, cfg, r),
+		"video embed": RenderVideoEmbed(tw, cfg, r, &p),
 		"error embed": RenderErrorEmbed("Tweet not found", &p, cfg, r, "1", ""),
 	} {
 		if !strings.Contains(s, "window.parent.postMessage") || strings.Contains(s, "ZgotmplZ") {
 			t.Errorf("%s:\n%s", name, s)
 		}
 	}
-	videoEmbed := RenderVideoEmbed(tw, cfg, r)
+	videoEmbed := RenderVideoEmbed(tw, cfg, r, &p)
 	requireSel(t, parse(t, template.HTML(videoEmbed)), ".embed-video .gallery-video",
 		`meta[property="og:video:url"]`, `script[src="/js/hlsPlayback.js?v=3"]`)
 	if strings.Contains(videoEmbed, `src="/js/hls.min.js"`) {
@@ -555,12 +555,12 @@ func TestOtherViews(t *testing.T) {
 		"about account": RenderAboutAccount(types.AccountInfo{
 			Username: "jack", JoinDate: start, VerifiedType: types.VerifiedBlue, OverrideVerifiedYear: -5,
 			UsernameChanges: 2,
-		}),
+		}, &p),
 		"community": RenderCommunity(RenderCommunityAbout(types.Community{
 			ID: "1", Name: "C", JoinPolicy: "Open", CreatedAt: start, Rules: []types.CommunityRule{{Name: "r"}},
-		}, []types.User{{Username: "m"}}), RenderCommunityTabs(types.QueryUserList, types.Community{ID: "1", Hashtags: []string{"#go"}}), types.Community{ID: "1"}),
+		}, []types.User{{Username: "m"}}, &p), RenderCommunityTabs(types.QueryUserList, types.Community{ID: "1", Hashtags: []string{"#go"}}), types.Community{ID: "1"}, &p),
 		"list": RenderList(RenderTimelineUsers(types.UsersTimeline{Beginning: true}, &p, ""),
-			types.Query{Kind: types.QueryUserList}, types.List{ID: "1", Name: "L", Username: "o"}),
+			types.Query{Kind: types.QueryUserList}, types.List{ID: "1", Name: "L", Username: "o"}, &p),
 		"notes": RenderBirdwatchNotes(richTweet(), types.BirdwatchNotes{Notes: []types.BirdwatchNote{
 			{ID: "9", Text: "see https://x.com/a", Helpful: true, CreatedAt: start},
 		}}, &p, "/i/birdwatch/t/1", false),
@@ -618,6 +618,83 @@ func TestArticle(t *testing.T) {
 			t.Errorf("article lacks %s:\n%s", want, s)
 		}
 	}
+}
+
+func TestDirectMediaAndVideoPreload(t *testing.T) {
+	p := prefs.Defaults
+	tw := richTweet()
+	tw.User.UserPic = "profile_images/1/avatar_normal.jpg"
+	tw.Media[0].Photo.URL = "media/a?format=jpg&name=small"
+	tw.Quote.ArticlePreview = &types.ArticlePreview{CoverImage: "media/cover.jpg"}
+	tw.Media[2].Video.PlaybackType = types.VideoM3u8
+	tw.Media[2].Video.Variants = append(tw.Media[2].Video.Variants, types.VideoVariant{
+		ContentType: types.VideoM3u8, URL: "https://video.twimg.com/playlist.m3u8",
+	})
+	p.HlsPlayback = true
+	initial := parse(t, RenderTweet(tw, &p, "/", TweetOpts{}))
+	requireSel(t, initial, `video[data-url*="/video/"]`, `.tweet-avatar img[src*="/pic/"]`)
+	if len(queryAll(initial, `video[preload="none"]`)) != 0 {
+		t.Fatal("video preload preference is active by default")
+	}
+
+	p = prefs.Parse(map[string]string{"directMedia": "on", "disableVideoPreload": "on"}, nil)
+	p.AutoplayGifs = false
+	doc := parse(t, RenderTweet(tw, &p, "/", TweetOpts{}))
+	requireSel(t, doc,
+		`.tweet-avatar img[src="https://pbs.twimg.com/profile_images/1/avatar_bigger.jpg"]`,
+		`a.still-image[href="https://pbs.twimg.com/media/a?format=jpg&name=orig"]`,
+		`img[src="https://pbs.twimg.com/media/a?format=jpg&name=small"]`,
+		`img[src="https://pbs.twimg.com/card_img/c.jpg"]`,
+		`.article-card img[src="https://pbs.twimg.com/media/cover.jpg"]`,
+		`video[controls=""][preload="none"] source[src="https://video.twimg.com/high.mp4"]`,
+		`video.gif[controls=""][preload="none"] source[src="https://video.twimg.com/g.mp4"]`,
+		`a.video-download[href="https://video.twimg.com/high.mp4"]`,
+	)
+
+	p.AutoplayGifs = true
+	gif := parse(t, renderGifAttachment(tw.Quote.Media[0].Gif, &p, "/"))
+	requireSel(t, gif, `video.gif[autoplay=""]`)
+	if len(queryAll(gif, `video[preload="none"]`)) != 0 {
+		t.Fatal("autoplaying GIF should start immediately")
+	}
+
+	a := &types.Article{
+		Paragraphs: []types.ArticleParagraph{{Kind: "atomic", EntityRanges: []types.ArticleEntityRange{{Key: 1}}}},
+		Entities:   map[int]types.ArticleEntity{1: {Kind: "MEDIA", MediaIDs: []string{"1"}}},
+		Media:      map[string]types.ArticleMedia{"1": {Kind: "ApiVideo", URL: "https://video.twimg.com/article.mp4"}},
+	}
+	requireSel(t, parse(t, RenderArticle(a, nil, "/i/article/1", &p, "1")),
+		`video[controls=""][preload="none"][src="https://video.twimg.com/article.mp4"]`)
+}
+
+func TestDirectMediaRSS(t *testing.T) {
+	cfg, err := config.FromFile(config.File{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := prefs.Defaults
+	p.DirectMedia = true
+	tw := richTweet()
+	tw.User.UserPic = "profile_images/1/avatar_normal.jpg"
+	tw.Media[0].Photo.URL = "media/photo?format=jpg&name=large"
+	tw.ArticlePreview = &types.ArticlePreview{CoverImage: "media/cover.jpg"}
+	profile := types.Profile{User: tw.User, Tweets: types.Timeline{Content: []types.Tweets{{tw}}}}
+	feed := RenderTimelineRss(profile, cfg, &p, false)
+	var got struct {
+		Pic         string `xml:"channel>image>url"`
+		Description string `xml:"channel>item>description"`
+	}
+	if err := xml.Unmarshal([]byte(feed), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Pic != "https://pbs.twimg.com/profile_images/1/avatar_400x400.jpg" {
+		t.Errorf("RSS profile image = %q", got.Pic)
+	}
+	requireSel(t, parse(t, template.HTML(got.Description)),
+		`img[src="https://pbs.twimg.com/media/photo?format=jpg&name=large"]`,
+		`img[src="https://pbs.twimg.com/media/cover.jpg"]`,
+		`img[src="https://pbs.twimg.com/thumb.jpg"]`,
+		`video source[src="https://video.twimg.com/g.mp4"]`)
 }
 
 func TestRSS(t *testing.T) {

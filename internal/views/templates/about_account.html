@@ -2,7 +2,7 @@
 {{- define "aboutAccount" -}}
 <div class="about-account">
   <div class="about-account-header">
-    <a class="about-account-avatar" href="/{{.Info.Username}}">{{genImg .Avatar}}</a>
+    <a class="about-account-avatar" href="/{{.Info.Username}}">{{genImg .Avatar .P}}</a>
     <div class="about-account-name">{{linkUser .U "profile-card-fullname"}}{{verifiedIcon .U}}</div>
     {{- linkUser .U "profile-card-username" -}}
   </div>
