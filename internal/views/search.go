@@ -72,7 +72,7 @@ func RenderMediaViewTabs(q types.Query) template.HTML {
 	return exec("tabs", map[string]any{"Class": "tab media-view-tabs", "Tabs": tabs})
 }
 
-// RenderSearchTabs renders the Top/Latest/Media/Users/Lists tabs.
+// RenderSearchTabs renders the primary tabs and the selected category's subtabs.
 func RenderSearchTabs(q types.Query) template.HTML {
 	link := func(kind types.QueryKind, view string) string {
 		t := q
@@ -80,18 +80,39 @@ func RenderSearchTabs(q types.Query) template.HTML {
 		t.View = view
 		return "?" + query.URL(t)
 	}
-	var tabs []tab
-	if !flags.GuestAuth {
-		tabs = append(tabs, tab{tabClass(q, types.QueryTop), link(types.QueryTop, ""), "Top"})
+	isTweet := q.Kind == types.QueryTop || q.Kind == types.QueryTweets || q.Kind == types.QueryMedia
+	isCommunity := q.Kind == types.QueryCommunitySearch || q.Kind == types.QueryCommunities ||
+		q.Kind == types.QueryCommunitiesLatest
+	main := []tab{
+		{activeTab(isTweet), link(types.QueryTweets, ""), "Tweets"},
+		{tabClass(q, types.QueryUsers), link(types.QueryUsers, ""), "Users"},
+		{tabClass(q, types.QueryLists), link(types.QueryLists, ""), "Lists"},
 	}
-	tabs = append(tabs,
-		tab{tabClass(q, types.QueryTweets), link(types.QueryTweets, ""), "Latest"},
-		// the media view mode only applies to the Media tab
-		tab{tabClass(q, types.QueryMedia), link(types.QueryMedia, q.View), "Media"},
-		tab{tabClass(q, types.QueryUsers), link(types.QueryUsers, ""), "Users"},
-		tab{tabClass(q, types.QueryLists), link(types.QueryLists, ""), "Lists"},
-	)
-	return exec("tabs", map[string]any{"Class": "tab", "Tabs": tabs})
+	if !flags.GuestAuth {
+		main = append(main, tab{activeTab(isCommunity), link(types.QueryCommunitySearch, ""), "Communities"})
+	}
+	primary := exec("tabs", map[string]any{"Class": "tab search-tabs", "Tabs": main})
+	var sub []tab
+	switch {
+	case isTweet:
+		if !flags.GuestAuth {
+			sub = append(sub, tab{tabClass(q, types.QueryTop), link(types.QueryTop, ""), "Top"})
+		}
+		sub = append(sub,
+			tab{tabClass(q, types.QueryTweets), link(types.QueryTweets, ""), "Latest"},
+			tab{tabClass(q, types.QueryMedia), link(types.QueryMedia, q.View), "Media"},
+		)
+	case isCommunity:
+		sub = []tab{
+			{tabClass(q, types.QueryCommunitySearch), link(types.QueryCommunitySearch, ""), "Communities"},
+			{tabClass(q, types.QueryCommunities), link(types.QueryCommunities, ""), "Top"},
+			{tabClass(q, types.QueryCommunitiesLatest), link(types.QueryCommunitiesLatest, ""), "Latest"},
+		}
+	}
+	if len(sub) == 0 {
+		return primary
+	}
+	return primary + exec("tabs", map[string]any{"Class": "tab search-subtabs", "Tabs": sub})
 }
 
 func isPanelOpen(q types.Query) bool {
@@ -181,6 +202,14 @@ func RenderListSearch(results types.Result[types.ListSearchResult], p *prefs.Pre
 		exec("timelineHeader", renderSearchForm("lists", "Enter search...", results.Query.Text)),
 		RenderSearchTabs(results.Query),
 		RenderTimelineLists(results, p, path),
+	}})
+}
+
+func RenderCommunitySearch(q types.Query, results template.HTML) template.HTML {
+	return exec("container", map[string]any{"Class": "timeline-container", "Parts": []template.HTML{
+		exec("timelineHeader", renderSearchForm(string(q.Kind), "Search communities…", q.Text)),
+		RenderSearchTabs(q),
+		results,
 	}})
 }
 

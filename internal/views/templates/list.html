@@ -63,7 +63,7 @@
     <h2>Moderators<a class="community-mods-link" href="{{url $.Path}}/moderators">See all</a></h2>
     {{- range .}}
     <div class="community-moderator">
-      <a href="/{{.Username}}">{{genImg (userPic .UserPic "_bigger") "community-mod-avatar"}}</a>
+      <a href="/{{.Username}}">{{genImg (userPic .UserPic "_bigger") $.P "community-mod-avatar"}}</a>
       <div class="community-mod-info">
         <a href="/{{.Username}}" class="community-mod-name">{{.Fullname}}{{verifiedIcon .}}</a>
         <a href="/{{.Username}}" class="community-mod-username">@{{.Username}}</a>

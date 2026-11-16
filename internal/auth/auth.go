@@ -132,7 +132,8 @@ func isLimited(s *Session, req Req) bool {
 }
 
 func isReady(s *Session, req Req) bool {
-	return s != nil && s.pending < maxConcurrentReqs && !isLimited(s, req)
+	return s != nil && s.pending < maxConcurrentReqs &&
+		!(req.Search && s.suspended) && !isLimited(s, req)
 }
 
 func isGuestReady(s *Session, req Req) bool {
@@ -363,7 +364,7 @@ func GetSession(req Req) (*Session, error) {
 func selectCookieSession(sessions []*Session, req Req) (*Session, error) {
 	var best *Session
 	for _, s := range sessions {
-		if s.Kind != Cookie || s.pending >= maxConcurrentReqs || isLimited(s, req) {
+		if s.Kind != Cookie || !isReady(s, req) {
 			continue
 		}
 		if best == nil || s.pending < best.pending {

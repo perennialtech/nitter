@@ -172,6 +172,58 @@ func TestExpiredTokenInvalidatesSession(t *testing.T) {
 	}
 }
 
+func TestGraphUserTweetsRetriesIncompleteTimeline(t *testing.T) {
+	addCookieSessions(t, 2)
+	saveSettings(t)
+	maxRetries = 3
+	const valid = `{"data":{"user":{"result":{"timeline":{"timeline":{"instructions":[]}}}}}}`
+	var calls atomic.Int32
+	fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch calls.Add(1) {
+		case 1:
+			w.Write([]byte(`{"data":{"user":{"result":{}}}}`))
+		case 2:
+			w.Write([]byte(strings.TrimSuffix(valid, "}") + `,"errors":[{"code":131}]}`))
+		default:
+			w.Write([]byte(valid))
+		}
+	})
+
+	p, err := GraphUserTweets(t.Context(), "123", types.TimelineTweets, "", false)
+	if err != nil || !p.Tweets.Beginning || len(p.Tweets.Content) != 0 || calls.Load() != 3 {
+		t.Fatalf("empty valid timeline = %+v, %v after %d requests", p.Tweets, err, calls.Load())
+	}
+}
+
+func TestGraphUserTweetsDistinguishesProtectedAndMissing(t *testing.T) {
+	addCookieSessions(t, 1)
+	for _, tc := range []struct {
+		name      string
+		body      string
+		protected bool
+	}{
+		{"protected error", `{"errors":[{"code":22}]}`, true},
+		{"protected profile", `{"data":{"user_result":{"result":{"privacy":{"protected":true}}}}}`, true},
+		{"missing", `{"data":{"user":{"result":null}}}`, false},
+		{"malformed instructions", `{"data":{"user":{"result":{"timeline":{"timeline":{"instructions":{}}}}}}}`, false},
+		{"non-JSON", "upstream unavailable", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			})
+			p, err := GraphUserTweets(t.Context(), "123", types.TimelineTweets, "next", false)
+			if tc.protected {
+				if err != nil || !p.User.Protected || len(p.Tweets.Content) != 0 || p.Tweets.Beginning {
+					t.Fatalf("protected timeline = %+v, %v", p, err)
+				}
+			} else if !errors.Is(err, types.ErrRateLimited) {
+				t.Fatalf("incomplete timeline error = %v, want ErrRateLimited", err)
+			}
+		})
+	}
+}
+
 func TestRetriesUseAnotherAttempt(t *testing.T) {
 	addCookieSessions(t, 2)
 	oldRetries := maxRetries

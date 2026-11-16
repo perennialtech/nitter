@@ -116,7 +116,7 @@ func renderThread(thread types.Tweets, p *prefs.Prefs, path string, bigThumb boo
 
 func renderUser(u types.User, p *prefs.Prefs) template.HTML {
 	return exec("user", map[string]any{
-		"U": u, "AvatarClass": avatarClass(p),
+		"U": u, "P": p, "AvatarClass": avatarClass(p),
 		"Bio": template.HTML(formatters.ReplaceURLs(u.Bio, p, "")),
 	})
 }
@@ -182,9 +182,10 @@ func mentionedUser(s string) string {
 
 type mentionWord struct{ Word, Username string }
 
-func renderListCard(r types.ListSearchResult) template.HTML {
+func renderListCard(r types.ListSearchResult, p *prefs.Prefs) template.HTML {
 	d := map[string]any{
 		"R":       r,
+		"P":       p,
 		"URL":     "/i/lists/" + r.List.ID,
 		"Members": "· " + insertSep(r.List.Members) + " members",
 	}
@@ -212,7 +213,18 @@ func renderListCard(r types.ListSearchResult) template.HTML {
 
 // RenderTimelineLists renders list search results.
 func RenderTimelineLists(results types.Result[types.ListSearchResult], p *prefs.Prefs, path string) template.HTML {
-	return exec("timelineResults", timelineResults(results, path, renderListCard))
+	return exec("timelineResults", timelineResults(results, path, func(r types.ListSearchResult) template.HTML {
+		return renderListCard(r, p)
+	}))
+}
+
+func RenderTimelineCommunities(results types.Result[types.Community], p *prefs.Prefs, path string) template.HTML {
+	return exec("timelineResults", timelineResults(results, path, func(c types.Community) template.HTML {
+		return exec("communitySearchCard", map[string]any{
+			"C": c, "P": p, "URL": "/i/communities/" + c.ID,
+			"Members": "· " + insertSep(c.MemberCount) + " members",
+		})
+	}))
 }
 
 func filterThreads(threads []types.Tweets, p *prefs.Prefs) []types.Tweets {

@@ -38,7 +38,7 @@ func (s *Server) listRoutes() {
 		if s.cfg.EnableRSSList {
 			rss = "/i/lists/" + c.param("id") + "/rss"
 		}
-		return c.page(views.RenderList(body, q, l), views.PageOpts{TitleText: listTitle(l), RSS: rss})
+		return c.page(views.RenderList(body, q, l, c.prefs()), views.PageOpts{TitleText: listTitle(l), RSS: rss})
 	}
 
 	s.get("/@name/lists/@slug/?", func(c *ctx) error {
@@ -108,7 +108,7 @@ func (s *Server) communityRoutes() {
 			if cm.ID == "" || cm.Name == "" {
 				return c.fail(http.StatusNotFound, `Community "`+c.param("id")+`" not found`)
 			}
-			return c.page(views.RenderCommunity(body, nav, cm), views.PageOpts{TitleText: title})
+			return c.page(views.RenderCommunity(body, nav, cm, c.prefs()), views.PageOpts{TitleText: title})
 		})
 	}
 	tweets := func(c *ctx, tl types.Timeline, err error) (template.HTML, error) {
@@ -136,7 +136,7 @@ func (s *Server) communityRoutes() {
 	add("/about", func(c *ctx, cm types.Community) (string, template.HTML, template.HTML, error) {
 		mods, err := cache.CommunityModerators(c.r.Context(), cm.ID)
 		return cm.Name + " - About", views.RenderCommunityTabs(types.QueryUserList, cm),
-			views.RenderCommunityAbout(cm, mods), err
+			views.RenderCommunityAbout(cm, mods, c.prefs()), err
 	})
 	add("/members", func(c *ctx, cm types.Community) (string, template.HTML, template.HTML, error) {
 		members, err := api.GraphCommunityMembers(c.r.Context(), cm.ID, c.cursor())
@@ -218,7 +218,7 @@ func (s *Server) embedRoutes() {
 		if !t.HasVideos() {
 			return c.html(http.StatusOK, views.RenderErrorEmbed("No video in tweet", p, s.cfg, c.r, id, t.User.Username))
 		}
-		return c.html(http.StatusOK, views.RenderVideoEmbed(t, s.cfg, c.r))
+		return c.html(http.StatusOK, views.RenderVideoEmbed(t, s.cfg, c.r, p))
 	})
 
 	s.get("/@user/status/@id/embed", func(c *ctx) error {
@@ -284,7 +284,7 @@ func (s *Server) embedRoutes() {
 			"html":          views.RenderOembedIframe(embedURL, maxwidth),
 		}
 		if len(t.Media) > 0 {
-			res["thumbnail_url"] = prefix + utils.PicURL(t.Media[0].Thumb())
+			res["thumbnail_url"] = utils.AbsoluteMediaURL(prefix, utils.MediaPicURL(t.Media[0].Thumb(), c.prefs().DirectMedia))
 			res["thumbnail_width"] = maxwidth
 			res["thumbnail_height"] = maxwidth
 		}
@@ -353,11 +353,18 @@ func (c *ctx) streamManifest(m3u8 string) error {
 	if m3u8 == "" {
 		return c.status(http.StatusNotFound)
 	}
+	p := c.prefs()
+	if direct := utils.DirectTwimgURL(m3u8); direct != "" {
+		c.w.Header().Add("Vary", "Cookie")
+		if p.DirectMedia {
+			return c.redirect(direct)
+		}
+	}
 	manifest := safeFetch(c.r.Context(), m3u8)
 	if manifest == "" {
 		return c.status(http.StatusBadGateway)
 	}
-	return c.text(http.StatusOK, m3u8Mime, formatters.ProxifyVideo(manifest, c.prefs().ProxyVideos, m3u8))
+	return c.text(http.StatusOK, m3u8Mime, formatters.ProxifyVideo(manifest, p.ProxyVideos, m3u8))
 }
 
 func (s *Server) broadcastRoutes() {

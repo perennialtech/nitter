@@ -184,20 +184,35 @@ document.addEventListener("DOMContentLoaded", function () {
   const itemClass = containerClass + " > div:not(.top-ref):not(.show-more):not(.timeline-header):not(.timeline-footer)";
   const html = document.documentElement;
   const container = repliesContainer || document.querySelector(containerClass);
-  const masonryEl = container?.querySelector(".gallery-masonry");
+  if (!container) return;
+  const masonryEl = container.querySelector(".gallery-masonry");
   const masonry = masonryEl ? new Masonry(masonryEl) : null;
+  const loadedPages = new Set();
   let loading = false;
+  let autoLoadFailed = false;
 
-  function handleScroll(failed) {
-    if (loading || html.scrollTop + html.clientHeight < html.scrollHeight - 3000) return;
+  function scrollURL(href) {
+    const url = new URL(href, location.href);
+    url.searchParams.set("scroll", "true");
+    url.hash = "";
+    return url.href;
+  }
 
+  function handleScroll() {
+    if (loading || autoLoadFailed || html.scrollTop + html.clientHeight < html.scrollHeight - 3000) return;
     const loadMore = getLoadMore(document);
     if (!loadMore) return;
+    loadPage(loadMore, 0);
+  }
+
+  function fillViewport() {
+    if (html.scrollHeight <= html.clientHeight + 1) handleScroll();
+  }
+
+  function loadPage(loadMore, failed) {
     loading = true;
     loadMore.children[0].text = "Loading...";
-
-    const url = new URL(loadMore.children[0].href);
-    url.searchParams.append("scroll", "true");
+    const url = scrollURL(loadMore.children[0].href);
 
     fetch(url)
       .then(r => {
@@ -206,13 +221,14 @@ document.addEventListener("DOMContentLoaded", function () {
         return r.text();
       })
       .then(responseText => {
-        // 204: the previous page was the last one
-        if (responseText === null) {
+        // 204 or an empty response means the previous page was the last one.
+        if (responseText === null || responseText.trim() === "") {
           isTweet ? loadMore.remove() : showTimelineEnd(loadMore, masonry);
           loading = false;
           return;
         }
         const doc = new DOMParser().parseFromString(responseText, "text/html");
+        loadedPages.add(url);
         loadMore.remove();
 
         if (masonry) {
@@ -233,20 +249,33 @@ document.addEventListener("DOMContentLoaded", function () {
         loading = false;
         // Some timeline routes return a footer in a 200 response when exhausted.
         const footer = isTweet ? null : doc.querySelector(".timeline > .timeline-footer");
-        const pagination = getLoadMore(doc) || footer;
+        const next = getLoadMore(doc);
+        const repeated = next && loadedPages.has(scrollURL(next.children[0].href));
+        const pagination = next || footer;
         if (pagination) {
           isTweet ? container.appendChild(pagination) : insertBeforeLast(container, pagination);
           if (masonry) pagination.classList.add("masonry-visible");
+          if (repeated) {
+            isTweet ? pagination.remove() : showTimelineEnd(pagination, masonry);
+          } else if (next) {
+            requestAnimationFrame(fillViewport);
+          }
         }
       })
       .catch(err => {
         console.warn("Something went wrong.", err);
-        if (failed > 3) { loadMore.children[0].text = "Error"; return; }
-        loading = false;
-        handleScroll((failed || 0) + 1);
+        if (failed >= 10) {
+          autoLoadFailed = true;
+          loading = false;
+          loadMore.children[0].text = "Load more";
+          return;
+        }
+        const delay = Math.min(2000, 250 * (failed + 1));
+        setTimeout(() => loadPage(loadMore, failed + 1), delay);
       });
   }
 
   window.addEventListener("scroll", () => handleScroll());
+  window.addEventListener("load", fillViewport);
 });
 // @license-end

@@ -4,7 +4,7 @@
   <a class="card-container" href="{{url .URL}}">
     {{- with .A.CoverImage}}
     <div class="card-image-container">
-      <div class="card-image">{{genImg .}}</div>
+      <div class="card-image">{{genImg . $.P}}</div>
       <span class="article-card-badge">Article</span>
     </div>
     {{- end}}
@@ -33,7 +33,7 @@
   </div>
   {{- end}}
   <div class="tweet-header">
-    <a class="tweet-avatar" href="/{{.T.User.Username}}">{{genImg (userPic .T.User.UserPic .AvatarSize) .AvatarClass}}</a>
+    <a class="tweet-avatar" href="/{{.T.User.Username}}">{{genImg (userPic .T.User.UserPic .AvatarSize) .P .AvatarClass}}</a>
     <div class="tweet-name-row">
       <div class="fullname-and-username">
         {{- linkUser .T.User "fullname"}}{{verifiedIcon .T.User}}{{linkUser .T.User "username" -}}
@@ -75,7 +75,7 @@
   <img src="{{url .Thumb}}" loading="lazy"{{template "mediaSize" .V.Size}}>
   {{- .Overlay}}
   {{- else if .MP4}}
-  <video poster="{{url .Thumb}}"{{template "mediaSize" .V.Size}} controls=""{{if .Muted}} muted=""{{end}}><source src="{{url .Source}}" type="video/mp4"></video>
+  <video poster="{{url .Thumb}}"{{template "mediaSize" .V.Size}} controls=""{{if .NoPreload}} preload="none"{{end}}{{if .Muted}} muted=""{{end}}><source src="{{url .Source}}" type="video/mp4"></video>
   {{- else}}
   <video poster="{{url .Thumb}}"{{template "mediaSize" .V.Size}} data-url="{{url .Source}}" data-autoload="false"{{if .Muted}} muted=""{{end}}></video>
   <div class="video-overlay" onclick="playVideo(this)">
@@ -115,7 +115,7 @@
   {{- else if .P.AutoplayGifs}}
   <video class="gif" poster="{{url .Thumb}}"{{template "mediaSize" .G.Size}} autoplay="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
   {{- else}}
-  <video class="gif" poster="{{url .Thumb}}"{{template "mediaSize" .G.Size}} controls="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
+  <video class="gif" poster="{{url .Thumb}}"{{template "mediaSize" .G.Size}} controls=""{{if .P.DisableVideoPreload}} preload="none"{{end}} muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
   {{- end}}
   {{- with .G.AltText}}{{template "altText" .}}{{end}}
 </div>
@@ -151,8 +151,8 @@
 {{- define "cardImage" -}}
 <div class="card-image-container">
   <div class="card-image">
-    {{- genImg .Image}}
-    {{- if eq .Kind "player"}}
+    {{- genImg .C.Image .P}}
+    {{- if eq .C.Kind "player"}}
     <div class="card-overlay"><div class="overlay-circle"><span class="overlay-triangle"></span></div></div>
     {{- end}}
   </div>
@@ -180,7 +180,7 @@
   </div>
   {{- else}}
   <a class="card-container" href="{{url .URL}}">
-    {{- if .C.Image}}{{template "cardImage" .C}}{{end}}
+    {{- if .C.Image}}{{template "cardImage" .}}{{end}}
     <div class="card-content-container">{{template "cardContent" .C}}</div>
   </a>
   {{- end}}
@@ -270,7 +270,7 @@
   {{- with .Media}}
   <div class="quote-media-container">{{.}}</div>
   {{- end}}
-  {{- with .Q.ArticlePreview}}{{articleCard .}}{{end}}
+  {{- with .Q.ArticlePreview}}{{articleCard . $.P}}{{end}}
   {{- .Note}}
   {{- if .Q.HasThread}}
   <a class="show-thread" href="{{url .Link}}">Show this thread</a>

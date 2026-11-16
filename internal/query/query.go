@@ -157,6 +157,7 @@ func URL(q types.Query) string {
 	// media doubles as the profile media tab, where f isn't part of the URL scheme
 	switch {
 	case q.Kind == types.QueryTweets, q.Kind == types.QueryUsers, q.Kind == types.QueryLists,
+		q.Kind == types.QueryCommunitySearch, q.Kind == types.QueryCommunities, q.Kind == types.QueryCommunitiesLatest,
 		q.Kind == types.QueryTop, q.Kind == types.QueryMedia && len(q.FromUser) == 0:
 		params = append(params, "f="+string(q.Kind))
 		if q.Text != "" {

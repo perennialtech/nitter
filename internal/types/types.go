@@ -187,23 +187,27 @@ type Video struct {
 type QueryKind string
 
 const (
-	QueryPosts     QueryKind = "posts"
-	QueryReplies   QueryKind = "replies"
-	QueryMedia     QueryKind = "media"
-	QueryUsers     QueryKind = "users"
-	QueryTweets    QueryKind = "tweets"
-	QueryUserList  QueryKind = "userList"
-	QueryFollowers QueryKind = "followers"
-	QueryFollowing QueryKind = "following"
-	QueryLists     QueryKind = "lists"
-	QueryTop       QueryKind = "top"
-	QueryArticles  QueryKind = "articles"
-	QueryReposts   QueryKind = "reposts"
+	QueryPosts             QueryKind = "posts"
+	QueryReplies           QueryKind = "replies"
+	QueryMedia             QueryKind = "media"
+	QueryUsers             QueryKind = "users"
+	QueryTweets            QueryKind = "tweets"
+	QueryUserList          QueryKind = "userList"
+	QueryFollowers         QueryKind = "followers"
+	QueryFollowing         QueryKind = "following"
+	QueryLists             QueryKind = "lists"
+	QueryTop               QueryKind = "top"
+	QueryArticles          QueryKind = "articles"
+	QueryReposts           QueryKind = "reposts"
+	QueryCommunitySearch   QueryKind = "communitySearch"
+	QueryCommunities       QueryKind = "communities"
+	QueryCommunitiesLatest QueryKind = "communitiesLatest"
 )
 
 var QueryKinds = []QueryKind{
 	QueryPosts, QueryReplies, QueryMedia, QueryUsers, QueryTweets, QueryUserList,
 	QueryFollowers, QueryFollowing, QueryLists, QueryTop, QueryArticles, QueryReposts,
+	QueryCommunitySearch, QueryCommunities, QueryCommunitiesLatest,
 }
 
 type RankingMode string
@@ -561,6 +565,7 @@ type Community struct {
 	CreatedAt   time.Time
 	Rules       []CommunityRule
 	Hashtags    []string
+	Facepiles   []string `json:",omitempty"`
 }
 
 type GlobalObjects struct {

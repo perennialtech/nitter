@@ -56,3 +56,40 @@ func TestCommunityNotesRssCacheVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestRssMediaPreferenceCacheVariants(t *testing.T) {
+	cfg := &config.Config{CacheMaxMB: 1, RssCacheTime: 1, EnableRSSUserTweets: true}
+	cache.Init(cfg)
+	s := &Server{cfg: cfg}
+	s.rssRoutes()
+	for _, key := range []string{"twitter:jack", "direct:twitter:jack"} {
+		_, err := cache.Rss(context.Background(), key, func() (types.Rss, error) {
+			return types.Rss{Feed: key, Cursor: "123"}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		query, cookie, want string
+	}{
+		{"", "on", "direct:twitter:jack"},
+		{"", "", "twitter:jack"},
+		{"?directMedia=on", "", "direct:twitter:jack"},
+		{"?directMedia=false", "on", "twitter:jack"},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/jack/rss"+tt.query, nil)
+		if tt.cookie != "" {
+			r.AddCookie(&http.Cookie{Name: "directMedia", Value: tt.cookie})
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusOK || w.Body.String() != tt.want {
+			t.Errorf("RSS with query %q and cookie %q: status = %d, body = %q, want 200 and %q",
+				tt.query, tt.cookie, w.Code, w.Body.String(), tt.want)
+		}
+		if got := w.Header().Get("Vary"); got != "Cookie" {
+			t.Errorf("RSS Vary = %q, want Cookie", got)
+		}
+	}
+}

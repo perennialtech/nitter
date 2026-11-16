@@ -171,6 +171,9 @@ func DebugJSON() []byte {
 		if s.limited {
 			js.set("limited", true)
 		}
+		if s.suspended {
+			js.set("suspended", true)
+		}
 		list.set("acct-"+strconv.Itoa(i), js)
 	}
 

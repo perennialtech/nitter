@@ -84,11 +84,11 @@ func renderAtomicParagraph(par types.ArticleParagraph, a *types.Article, tweets 
 				continue
 			}
 			items = append(items, map[string]any{
-				"Kind": m.Kind, "Vid": utils.VidURL(m.URL), "Orig": utils.OrigPicURL(m.URL),
-				"Small": smallPic(m.URL), "Size": m.Size,
+				"Kind": m.Kind, "Vid": utils.MediaVidURL(m.URL, p.DirectMedia), "Orig": utils.MediaOrigPicURL(m.URL, p.DirectMedia),
+				"Small": smallPic(m.URL, p), "Size": m.Size,
 			})
 		}
-		return exec("articleMedia", map[string]any{"Items": items, "Caption": entity.Caption})
+		return exec("articleMedia", map[string]any{"Items": items, "Caption": entity.Caption, "P": p})
 	case "TWEET":
 		id, _ := strconv.ParseInt(entity.TweetID, 10, 64)
 		if t := tweets[id]; t != nil {
@@ -311,13 +311,14 @@ func RenderArticle(a *types.Article, tweets map[int64]*types.Tweet, path string,
 
 	return exec("article", map[string]any{
 		"A":           a,
+		"P":           p,
 		"Author":      author,
 		"AvatarClass": avatarClass(p),
 		"DateURL":     "/" + author.Username + "/status/" + tweetID,
 		"Date":        formatters.ShortTime(a.Time),
 		"Stats":       stats,
-		"CoverURL":    utils.OrigPicURL(a.CoverImage),
-		"CoverSrc":    smallPic(a.CoverImage),
+		"CoverURL":    utils.MediaOrigPicURL(a.CoverImage, p.DirectMedia),
+		"CoverSrc":    smallPic(a.CoverImage, p),
 		"Body":        template.HTML(b.String()),
 	})
 }

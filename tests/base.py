@@ -64,8 +64,8 @@ class Timeline(object):
 
 
 class Search(object):
-    tab_item = '.tab .tab-item'
-    tab_active = '.tab .tab-item.active a'
+    tab_item = '.search-tabs .tab-item, .search-subtabs .tab-item'
+    tab_active = '.search-tabs .tab-item.active a, .search-subtabs .tab-item.active a'
 
 
 class Conversation(object):

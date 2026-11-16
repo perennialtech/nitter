@@ -284,7 +284,14 @@ func ParseGraphCommunity(js gjson.Result) types.Community {
 		return types.Community{Creator: emptyUser()}
 	}
 
+	return parseCommunity(c)
+}
+
+func parseCommunity(c gjson.Result) types.Community {
 	banner := get(c, "custom_banner_media.media_info")
+	if isNull(get(banner, "original_img_url")) {
+		banner = get(c, "default_banner_media.media_info")
+	}
 	result := types.Community{
 		ID:          strOr(get(c, "rest_id"), str(get(c, "id_str"))),
 		Name:        str(get(c, "name")),
@@ -295,6 +302,11 @@ func ParseGraphCommunity(js gjson.Result) types.Community {
 		Banner:      getImageStr(get(banner, "original_img_url")),
 		BannerSize:  imageMediaSize(banner),
 		Creator:     parseGraphUserNode(get(c, "creator_results.result")),
+	}
+	for _, member := range arr(get(c, "members_facepile_results")) {
+		if pic := getImageStr(get(member, "result.avatar.image_url")); pic != "" {
+			result.Facepiles = append(result.Facepiles, pic)
+		}
 	}
 
 	if createdMs := intOr(get(c, "created_at"), 0); createdMs > 0 {
@@ -1266,6 +1278,19 @@ func extractTweetsFromEntry(e gjson.Result) []*types.Tweet {
 		if !tweet.Available {
 			tweet.ID = ParseID(entryID(e))
 		}
+		if context := get(e, "content.itemContent.socialContext"); tweet.Available &&
+			tweet.Retweet == nil && str(get(context, "contextType")) == "Community" {
+			if tweet.CommunityID == "" {
+				link := strings.TrimRight(str(get(context, "landingUrl.url")), "/")
+				id := link[strings.LastIndex(link, "/")+1:]
+				if id != "" && strings.Trim(id, "0123456789") == "" {
+					tweet.CommunityID = id
+				}
+			}
+			if tweet.CommunityID != "" && tweet.CommunityName == "" {
+				tweet.CommunityName = str(get(context, "text"))
+			}
+		}
 		return []*types.Tweet{tweet}
 	}
 	return extractTweetsFromModuleItems(get(e, "content.items"))
@@ -1279,6 +1304,20 @@ func addSingles(content []types.Tweets, tweets []*types.Tweet) []types.Tweets {
 	return content
 }
 
+func graphTimelineInstructions(js gjson.Result) gjson.Result {
+	return sel(
+		get(js, "data.list.timeline_response.timeline.instructions"),
+		get(js, "data.user.result.timeline.timeline.instructions"),
+		get(js, "data.user_result.result.timeline_response.timeline.instructions"),
+	)
+}
+
+// HasGraphTimelineInstructions recognizes the timeline response even when it
+// contains an empty array of instructions.
+func HasGraphTimelineInstructions(js gjson.Result) bool {
+	return graphTimelineInstructions(js).IsArray()
+}
+
 func ParseGraphTimeline(js gjson.Result, after string) types.Profile {
 	result := types.Profile{
 		User:        emptyUser(),
@@ -1286,16 +1325,7 @@ func ParseGraphTimeline(js gjson.Result, after string) types.Profile {
 		AccountInfo: types.AccountInfo{VerifiedType: types.VerifiedNone},
 	}
 
-	instructions := sel(
-		get(js, "data.list.timeline_response.timeline.instructions"),
-		get(js, "data.user.result.timeline.timeline.instructions"),
-		get(js, "data.user_result.result.timeline_response.timeline.instructions"),
-	)
-	if length(instructions) == 0 {
-		return result
-	}
-
-	for _, i := range arr(instructions) {
+	for _, i := range arr(graphTimelineInstructions(js)) {
 		if moduleItems := get(i, "moduleItems"); notNull(moduleItems) {
 			result.Tweets.Content = addSingles(result.Tweets.Content, extractTweetsFromModuleItems(moduleItems))
 			continue
@@ -1547,6 +1577,8 @@ func parseGraphSearch[T any](js gjson.Result, after string,
 	instructions := sel(
 		get(js, "data.search.timeline_response.timeline.instructions"),
 		get(js, "data.search_by_raw_query.search_timeline.timeline.instructions"),
+		get(js, "data.search_by_raw_query.communities_posts_search_page.timeline.instructions"),
+		get(js, "data.search_by_raw_query.communities_latest_posts_search_page.timeline.instructions"),
 	)
 	if length(instructions) == 0 {
 		return result

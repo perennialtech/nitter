@@ -19,7 +19,7 @@
 <b>Link</b><br>
 {{if .Link}}<a href="{{xmlEscape .Link}}">
 {{end -}}
-{{if .C.Image}}<img src="{{.Prefix}}{{picURL .C.Image}}" style="max-width:250px;" />
+{{if .C.Image}}<img src="{{.Image}}" style="max-width:250px;" />
 {{end -}}
 {{if .Title}}{{if .C.Image}}<br>
 {{end}}<b>{{.Title}}</b>
@@ -37,7 +37,7 @@
 <hr/>
 <b>Article</b><br>
 <a href="{{.Prefix}}/i/article/{{.Article.TweetID}}">
-{{if .Article.CoverImage}}<img src="{{.Prefix}}{{picURL .Article.CoverImage}}" style="max-width:250px;" />
+{{if .Article.CoverImage}}<img src="{{.Cover}}" style="max-width:250px;" />
 {{end -}}
 {{if .Article.Title}}{{if .Article.CoverImage}}<br>
 {{end}}<b>{{xmlEscape .Article.Title}}</b>
@@ -111,7 +111,7 @@
     <image>
       <title>{{.Title}}</title>
       <link>{{.Prefix}}/{{.Username}}</link>
-      <url>{{.Prefix}}{{.Pic}}</url>
+      <url>{{.Pic}}</url>
       <width>128</width>
       <height>128</height>
     </image>

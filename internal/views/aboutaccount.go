@@ -7,17 +7,19 @@ import (
 	"strconv"
 
 	"github.com/perennialtech/nitter/internal/formatters"
+	"github.com/perennialtech/nitter/internal/prefs"
 	"github.com/perennialtech/nitter/internal/types"
 )
 
 // RenderAboutAccount renders a profile's "About this account" page.
-func RenderAboutAccount(info types.AccountInfo) template.HTML {
+func RenderAboutAccount(info types.AccountInfo, p *prefs.Prefs) template.HTML {
 	u := types.User{
 		Username: info.Username, Fullname: info.Fullname, UserPic: info.UserPic,
 		VerifiedType: info.VerifiedType,
 	}
 	d := map[string]any{
 		"Info":   info,
+		"P":      p,
 		"U":      u,
 		"Avatar": formatters.UserPic(info.UserPic, "_200x200"),
 		"Joined": info.JoinDate.Format("January 2006"),

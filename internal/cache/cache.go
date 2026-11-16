@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package cache keeps users, lists, photo rails, broadcasts, spaces,
+// Package cache keeps users, profile timelines, lists, photo rails, broadcasts, spaces,
 // communities and RSS feeds in memory, fetching them from the API on a miss.
 package cache
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -30,10 +31,11 @@ type entry struct {
 }
 
 var (
-	entries       *otter.Cache[string, entry]
-	flights       singleflight.Group
-	rssCacheTime  time.Duration
-	listCacheTime time.Duration
+	entries             *otter.Cache[string, entry]
+	flights             singleflight.Group
+	rssCacheTime        time.Duration
+	listCacheTime       time.Duration
+	userTweetsCacheTime time.Duration
 )
 
 // Init creates the cache, holding at most cfg.CacheMaxMB megabytes of keys
@@ -41,6 +43,7 @@ var (
 func Init(cfg *config.Config) {
 	rssCacheTime = time.Duration(cfg.RssCacheTime) * time.Minute
 	listCacheTime = time.Duration(cfg.ListCacheTime) * time.Minute
+	userTweetsCacheTime = time.Duration(cfg.UserTweetsCacheTime) * time.Minute
 	entries = newCache(uint64(cfg.CacheMaxMB) << 20)
 }
 
@@ -186,6 +189,23 @@ func Username(ctx context.Context, userID string) (string, error) {
 			store(userKey(u.Username), baseCacheTime, u)
 		}
 		return u.Username, baseCacheTime, nil
+	})
+}
+
+// UserTweets returns a profile timeline page. Web and RSS requests can use
+// different upstream timelines, so they have separate cache entries.
+func UserTweets(ctx context.Context, id string, kind types.TimelineKind, cursor string, rss bool) (types.Profile, error) {
+	if userTweetsCacheTime <= 0 || id == "" {
+		return api.GraphUserTweets(ctx, id, kind, cursor, rss)
+	}
+	key := fmt.Sprintf("ut:%d:%t:%q:%s", kind, rss, id, cursor)
+	return cached(ctx, key, func() (types.Profile, time.Duration, error) {
+		profile, err := api.GraphUserTweets(ctx, id, kind, cursor, rss)
+		tweets := profile.Tweets
+		if profile.User.Protected || (len(tweets.Content) == 0 && tweets.Bottom == "" && profile.Pinned == nil) {
+			return profile, 0, err
+		}
+		return profile, userTweetsCacheTime, err
 	})
 }
 

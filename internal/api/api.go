@@ -241,9 +241,47 @@ func GraphUserTweets(ctx context.Context, id string, kind types.TimelineKind, af
 	default:
 		req = userTweetsURL(id, cursor, rss)
 	}
-	js, err := fetch(ctx, req)
+	var profile types.Profile
+	_, err := fetchValidated(ctx, req, func(js gjson.Result) error {
+		var err error
+		profile, err = parseProfileTimeline(js, after)
+		return err
+	})
 	if err != nil {
 		return types.Profile{}, err
+	}
+	return profile, nil
+}
+
+func parseProfileTimeline(js gjson.Result, after string) (types.Profile, error) {
+	user := js.Get("data.user.result")
+	if !notNull(user) {
+		user = js.Get("data.user_result.result")
+	}
+	protected := getBool(user.Get("privacy.protected")) || getBool(user.Get("legacy.protected")) ||
+		getStr(user.Get("reason")) == "Protected" || getStr(user.Get("unavailable_reason")) == "Protected"
+
+	errs := items(js.Get("errors"))
+	if js.IsArray() {
+		errs = items(js)
+	}
+	for _, e := range errs {
+		code := types.ErrorCode(e.Get("code").Int())
+		switch {
+		case code == types.ErrProtectedUser:
+			protected = true
+		case code == types.ErrNull || !containsAny(errorsToSkip, code):
+			return types.Profile{}, types.ErrRateLimited
+		}
+	}
+	if protected {
+		return types.Profile{
+			User:   types.User{Protected: true},
+			Tweets: types.Timeline{Beginning: after == ""},
+		}, nil
+	}
+	if !parser.HasGraphTimelineInstructions(js) {
+		return types.Profile{}, types.ErrRateLimited
 	}
 	return parser.ParseGraphTimeline(js, after), nil
 }
@@ -642,7 +680,7 @@ func GraphTweetSearch(ctx context.Context, q types.Query, after string) (types.T
 		if cursor != "" {
 			vars = vars.with("cursor", cursor)
 		}
-		js, err := fetch(ctx, gqlReq(graphSearchTimeline, vars.String(), ""))
+		js, err := fetch(ctx, searchTimelineReq(vars))
 		if err != nil {
 			return types.Timeline{}, err
 		}
@@ -664,7 +702,13 @@ func productSearch(ctx context.Context, q types.Query, product, after string) (g
 	if after != "" {
 		vars = vars.with("cursor", after)
 	}
-	return fetch(ctx, gqlReq(graphSearchTimeline, vars.String(), ""))
+	return fetch(ctx, searchTimelineReq(vars))
+}
+
+func searchTimelineReq(vars obj) apiReq {
+	req := gqlReq(graphSearchTimeline, vars.String(), "")
+	req.search = true
+	return req
 }
 
 // GraphUserSearch fetches a page of users matching q.Text.

@@ -21,7 +21,6 @@ const guidCutoff int64 = 2000000000000000000
 func textFuncs() texttemplate.FuncMap {
 	return texttemplate.FuncMap{
 		"xmlEscape": xmlEscape,
-		"picURL":    utils.PicURL,
 		"rssTweet":  rssTweet,
 	}
 }
@@ -86,7 +85,7 @@ func rssDescription(desc string, cfg *config.Config) string {
 
 type rssCardData struct {
 	C           *types.Card
-	Prefix      string
+	Image       string
 	Link, Title string
 	DestText    string
 }
@@ -111,7 +110,12 @@ type rssTweetData struct {
 	Cfg       *config.Config
 	Prefs     *prefs.Prefs
 	Article   *types.ArticlePreview
+	Cover     string
 	Translate bool
+}
+
+func rssPicURL(prefix, image string, p *prefs.Prefs) string {
+	return xmlEscape(utils.AbsoluteMediaURL(prefix, utils.MediaPicURL(image, p.DirectMedia)))
 }
 
 // rssTweet renders an item description (renderRssTweet).
@@ -130,28 +134,31 @@ func rssTweet(t *types.Tweet, cfg *config.Config, p *prefs.Prefs, translate bool
 			item := rssMediaItem{Kind: m.Kind}
 			switch m.Kind {
 			case types.PhotoMedia:
-				item.Src = prefix + utils.PicURL(m.Photo.URL)
+				item.Src = rssPicURL(prefix, m.Photo.URL, p)
 			case types.VideoMedia:
 				item.Link = prefix + formatters.TweetLink(t, true)
-				item.Src = prefix + utils.PicURL(m.Video.Thumb)
+				item.Src = rssPicURL(prefix, m.Video.Thumb, p)
 			case types.GifMedia:
-				item.Poster = prefix + utils.PicURL(m.Gif.Thumb)
-				item.Src = prefix + utils.PicURL(m.Gif.URL)
+				item.Poster = rssPicURL(prefix, m.Gif.Thumb, p)
+				item.Src = rssPicURL(prefix, m.Gif.URL, p)
 			}
 			d.Media = append(d.Media, item)
 		}
 	case t.Card != nil && t.Card.Kind != types.CardHidden && t.Card.Kind != types.CardUnknown:
-		c := &rssCardData{C: t.Card, Prefix: prefix, Title: xmlEscape(t.Card.Title)}
-		if strings.HasPrefix(t.Card.URL, "/") {
-			c.Link = prefix + t.Card.URL
+		c := &rssCardData{C: t.Card, Image: rssPicURL(prefix, t.Card.Image, p), Title: xmlEscape(t.Card.Title)}
+		if link := cardLink(t.Card, p); strings.HasPrefix(link, "/") {
+			c.Link = prefix + link
 		} else {
-			c.Link = formatters.ReplaceURLs(t.Card.URL, p, "")
+			c.Link = formatters.ReplaceURLs(link, p, "")
 		}
 		c.DestText = xmlEscape(c.Link)
 		if t.Card.Dest != "" {
 			c.DestText = xmlEscape(t.Card.Dest)
 		}
 		d.Card = c
+	}
+	if d.Article != nil {
+		d.Cover = rssPicURL(prefix, d.Article.CoverImage, p)
 	}
 	if poll := t.Poll; poll != nil {
 		for i, option := range poll.Options {
@@ -257,7 +264,7 @@ func RenderTimelineRss(profile types.Profile, cfg *config.Config, p *prefs.Prefs
 		Username:    profile.User.Username,
 		Title:       formatters.SanitizeXML(xmlEscape(title)),
 		Description: rssDescription(handle, cfg),
-		Pic:         utils.PicURL(formatters.UserPic(profile.User.UserPic, "_400x400")),
+		Pic:         rssPicURL(prefix, formatters.UserPic(profile.User.UserPic, "_400x400"), p),
 		HasTweets:   len(tweets) > 0,
 		Items:       rssItems(tweets, cfg, p, profile.User.ID, false),
 	})

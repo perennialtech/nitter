@@ -97,6 +97,74 @@ func OrigPicURL(link string) string {
 	return "/pic/orig/" + EncodeURL(link)
 }
 
+// DirectTwimgURL restores image hosts stripped by the parsers and returns
+// only HTTPS URLs on Nitter's supported twimg hosts.
+func DirectTwimgURL(link string) string {
+	if link == "" || strings.ContainsRune(link, '\\') {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil || u.User != nil || u.Opaque != "" {
+		return ""
+	}
+	if u.Scheme == "" && u.Host == "" {
+		if strings.HasPrefix(link, "/") {
+			return ""
+		}
+		if host, _, ok := strings.Cut(u.Path, "/"); ok && strings.Contains(host, ".") {
+			return DirectTwimgURL(HTTPS + link)
+		}
+		return DirectTwimgURL(HTTPS + Twimg + link)
+	}
+	switch strings.ToLower(u.Host) {
+	case "twimg.com", "abs.twimg.com", "pbs.twimg.com", "video.twimg.com":
+		if u.Scheme == "http" || u.Scheme == "https" || u.Scheme == "" {
+			u.Scheme = "https"
+			return u.String()
+		}
+	}
+	return ""
+}
+
+func MediaPicURL(link string, direct bool) string {
+	if direct {
+		if u := DirectTwimgURL(link); u != "" {
+			return u
+		}
+	}
+	return PicURL(link)
+}
+
+func MediaOrigPicURL(link string, direct bool) string {
+	if direct {
+		if raw := DirectTwimgURL(link); raw != "" {
+			u, _ := url.Parse(raw)
+			q := u.Query()
+			q.Set("name", "orig")
+			u.RawQuery = q.Encode()
+			return u.String()
+		}
+	}
+	return OrigPicURL(link)
+}
+
+func MediaVidURL(link string, direct bool) string {
+	if direct {
+		if u := DirectTwimgURL(link); u != "" {
+			return u
+		}
+	}
+	return VidURL(link)
+}
+
+// AbsoluteMediaURL prefixes media proxy paths with the instance's origin.
+func AbsoluteMediaURL(prefix, link string) string {
+	if strings.HasPrefix(link, "/") {
+		return prefix + link
+	}
+	return link
+}
+
 // FilterParams drops empty values and nitter's own parameters.
 func FilterParams(params url.Values) url.Values {
 	out := url.Values{}

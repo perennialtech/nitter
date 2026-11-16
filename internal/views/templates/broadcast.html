@@ -36,7 +36,7 @@
       <h2 class="broadcast-title">{{.BC.Title}}</h2>
       <div class="broadcast-user-row">
         <a class="broadcast-user" href="/{{.BC.User.Username}}">
-          {{- genImg .Avatar}}
+          {{- genImg .Avatar .P}}
           <div>
             <div><strong>{{.BC.User.Fullname}}</strong>{{verifiedIcon .BC.User}}</div>
             <span class="broadcast-username">@{{.BC.User.Username}}</span>
@@ -61,7 +61,7 @@
 {{- define "participant" -}}
 <div class="space-participant">
   <a href="/{{.P.Username}}">
-    {{- genImg (participantAvatar .P.AvatarURL)}}
+    {{- genImg (participantAvatar .P.AvatarURL) .Prefs}}
     <div class="participant-info">
       <div class="participant-name">
         <strong>{{.P.DisplayName}}</strong>

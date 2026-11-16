@@ -120,6 +120,9 @@ var Options = []Option{
 	integer("Cache", "rssMinutes", func(c *Config) *int { return &c.RssCacheTime }, 10,
 		"Minutes to cache each generated RSS feed. Feed readers see new tweets "+
 			"at most this late."),
+	integer("Cache", "userTweetsMinutes", func(c *Config) *int { return &c.UserTweetsCacheTime }, 0,
+		"Minutes to cache individual profile timeline pages, including pages used to build RSS feeds. "+
+			"Set to 0 to disable."),
 	integer("Cache", "maxMegabytes", func(c *Config) *int { return &c.CacheMaxMB }, 128,
 		"Memory limit of the cache, in MiB of compressed entries, shared by "+
 			"profiles, lists, communities, RSS feeds and the rest. Entries are "+
