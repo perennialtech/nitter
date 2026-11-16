@@ -37,6 +37,7 @@ type headerData struct {
 	PinnedLabel             string
 	Retweet, Retweeter      string
 	AvatarSize, AvatarClass string
+	CommunityLink           string
 }
 
 func renderPhotoAttachment(photo types.Photo, bigThumb bool) template.HTML {
@@ -537,6 +538,9 @@ func RenderTweet(tweet *types.Tweet, p *prefs.Prefs, path string, o TweetOpts) t
 	}
 	if strings.Contains(path, "/i/communities/") {
 		header.PinnedLabel = "Pinned by Community mods"
+	}
+	if t.CommunityID != "" && !strings.HasPrefix(path, "/i/communities/") {
+		header.CommunityLink = "/i/communities/" + t.CommunityID
 	}
 	if !p.AutoplayGifs && strings.HasSuffix(t.User.UserPic, "gif") {
 		header.AvatarSize = "_400x400"

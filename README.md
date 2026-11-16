@@ -24,6 +24,9 @@ available under **Preferences → Theme**. Prebuilt images are published to
 - Mobile support (responsive design)
 - AGPLv3 licensed, no proprietary instances permitted
 
+When translation is enabled, append `?tr=1` to `/i/communitynotes/rss` or
+`/i/communitynotes/new/rss` to use translations already supplied by X.
+
 ## Resources
 
 The wiki contains

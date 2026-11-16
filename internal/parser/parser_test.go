@@ -62,6 +62,20 @@ func TestParseGraphTweetLegacy(t *testing.T) {
 	}
 }
 
+func TestParseGraphTweetCommunity(t *testing.T) {
+	for _, tt := range []struct{ community, id, name string }{
+		{`{"id_str":"123","name":"Birds & Bees"}`, "123", "Birds & Bees"},
+		{`{"rest_id":"456"}`, "456", ""},
+		{`{"id_str":"../about","name":"Invalid"}`, "", ""},
+	} {
+		result := ParseGraphTweet(pj(`{"__typename":"Tweet","rest_id":"100",
+			"legacy":{"full_text":"post"},"community_results":{"result":` + tt.community + `}}`))
+		if result.CommunityID != tt.id || result.CommunityName != tt.name {
+			t.Errorf("community = %q, %q; want %q, %q", result.CommunityID, result.CommunityName, tt.id, tt.name)
+		}
+	}
+}
+
 func TestParseGraphTweetWrappersAndTombstones(t *testing.T) {
 	tw := ParseGraphTweet(pj(`{"__typename":"TweetWithVisibilityResults","tweet":` + legacyTweet + `}`))
 	if tw.ID != 100 {

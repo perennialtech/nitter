@@ -41,6 +41,11 @@
       <span class="tweet-date"><a href="{{url (tweetLink .T true)}}" title="{{time .T.Time}}">{{shortTime .T.Time}}</a></span>
     </div>
     {{- profileLabel .T.User}}
+    {{- if .CommunityLink}}
+    <div class="tweet-community">
+      <a href="{{.CommunityLink}}"><span class="icon-group" aria-hidden="true"></span> {{or .T.CommunityName "Community"}}</a>
+    </div>
+    {{- end}}
   </div>
 </div>
 {{- end}}

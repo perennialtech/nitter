@@ -41,6 +41,16 @@
   }
 }
 
+.tweet-community {
+  font-size: 0.85em;
+  margin: 2px 0 4px;
+
+  a {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+}
+
 .tweet-name-row {
   padding: 0;
   display: flex;
