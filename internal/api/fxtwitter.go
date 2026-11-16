@@ -176,8 +176,13 @@ func parseFxUser(js gjson.Result) types.User {
 	return u
 }
 
+func fxMediaSize(js gjson.Result) types.MediaSize {
+	return types.MediaSize{Width: getInt(js.Get("width")), Height: getInt(js.Get("height"))}
+}
+
 func parseFxVideo(js gjson.Result) types.Video {
 	v := types.Video{
+		Size:         fxMediaSize(js),
 		Available:    true,
 		Thumb:        fxImage(getStr(js.Get("thumbnail_url"))),
 		Title:        getStr(js.Get("altText")),
@@ -206,6 +211,7 @@ func parseFxMedia(js gjson.Result, t *types.Tweet) {
 		case "photo":
 			u, _, _ := strings.Cut(getStr(m.Get("url")), "?")
 			t.Media = append(t.Media, types.Media{Kind: types.PhotoMedia, Photo: types.Photo{
+				Size:    fxMediaSize(m),
 				URL:     fxImage(u),
 				AltText: getStr(m.Get("altText")),
 			}})
@@ -213,6 +219,7 @@ func parseFxMedia(js gjson.Result, t *types.Tweet) {
 			t.Media = append(t.Media, types.Media{Kind: types.VideoMedia, Video: parseFxVideo(m)})
 		case "gif":
 			t.Media = append(t.Media, types.Media{Kind: types.GifMedia, Gif: types.Gif{
+				Size:    fxMediaSize(m),
 				URL:     fxImage(getStr(m.Get("url"))),
 				Thumb:   fxImage(getStr(m.Get("thumbnail_url"))),
 				AltText: getStr(m.Get("altText")),

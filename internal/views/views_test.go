@@ -310,6 +310,29 @@ func TestTweetSelectors(t *testing.T) {
 	requireSel(t, parse(t, RenderTweet(tw, &p, "", TweetOpts{})), ".attachments.card .gallery-video video source")
 }
 
+func TestAttachmentDimensions(t *testing.T) {
+	tw := richTweet()
+	tw.Media[0].Photo.Size = types.MediaSize{Width: 640, Height: 360}
+	tw.Media[1].Photo.Size = types.MediaSize{Width: -640, Height: 360}
+	tw.Media[2].Video.Size = types.MediaSize{Width: 720, Height: 1280}
+	p := prefs.Defaults
+	for _, enabled := range []bool{false, true} {
+		p.Mp4Playback = enabled
+		doc := parse(t, RenderTweet(tw, &p, "/jack/status/1", TweetOpts{}))
+		requireSel(t, doc, `.still-image img[alt="alt"][width="640"][height="360"]`)
+		element := "img"
+		if enabled {
+			element = "video"
+		}
+		requireSel(t, doc, `.attachment `+element+`[width="720"][height="1280"]`)
+		for _, img := range queryAll(doc, `.still-image img[alt=""]`) {
+			if _, ok := attrOf(img, "width"); ok {
+				t.Error("invalid media dimensions emitted")
+			}
+		}
+	}
+}
+
 func TestRetweetAndUnavailable(t *testing.T) {
 	p := prefs.Defaults
 	rt := &types.Tweet{

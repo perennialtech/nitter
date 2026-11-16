@@ -70,7 +70,7 @@ func TestFxTextFacets(t *testing.T) {
            "replacement": "https://science.nasa.gov/saturn/", "display": "science.nasa.gov/saturn/"},
           {"type": "media", "indices": [64, 87], "original": "https://t.co/media"}]},
       "media": {"all": [{"type": "photo", "url": "https://pbs.twimg.com/media/HW82tqYWoAAnWCO.jpg?name=orig",
-                         "altText": "Saturn"}]}`)
+                         "altText": "Saturn", "width": 640, "height": 360}]}`)
 	if tw.ID != 2120974110335312297 || tw.Stats.Retweets != 576 || tw.Stats.Views != 397031 {
 		t.Fatalf("%+v", tw)
 	}
@@ -80,7 +80,8 @@ func TestFxTextFacets(t *testing.T) {
 		strings.Contains(tw.Text, "t.co/media") {
 		t.Fatalf("text %q", tw.Text)
 	}
-	if len(tw.Media) != 1 || tw.Media[0].Photo.URL != "media/HW82tqYWoAAnWCO.jpg" || tw.Media[0].Photo.AltText != "Saturn" {
+	if len(tw.Media) != 1 || tw.Media[0].Photo.URL != "media/HW82tqYWoAAnWCO.jpg" || tw.Media[0].Photo.AltText != "Saturn" ||
+		tw.Media[0].Photo.Size != (types.MediaSize{Width: 640, Height: 360}) {
 		t.Fatalf("media %+v", tw.Media)
 	}
 }
@@ -110,7 +111,7 @@ func TestFxQuoteHidesTrailingLink(t *testing.T) {
 func TestFxVideo(t *testing.T) {
 	tw := fxTweet(t, `
       "raw_text": {"text": "", "display_text_range": [0, 0], "facets": []},
-      "media": {"all": [{"type": "video", "duration": 29.7,
+      "media": {"all": [{"type": "video", "duration": 29.7, "width": 1080, "height": 1350,
         "url": "https://video.twimg.com/amplify_video/1/vid/avc1/1080x1350/a.mp4?tag=29",
         "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/1/img/b.jpg",
         "formats": [
@@ -124,7 +125,7 @@ func TestFxVideo(t *testing.T) {
 	if v.PlaybackType != types.VideoM3u8 {
 		t.Errorf("playback type = %q, want %q", v.PlaybackType, types.VideoM3u8)
 	}
-	if v.Thumb != "amplify_video_thumb/1/img/b.jpg" || v.DurationMs != 29700 || len(v.Variants) != 2 ||
+	if v.Size != (types.MediaSize{Width: 1080, Height: 1350}) || v.Thumb != "amplify_video_thumb/1/img/b.jpg" || v.DurationMs != 29700 || len(v.Variants) != 2 ||
 		v.Variants[0].ContentType != types.VideoM3u8 || v.Variants[1].Bitrate != 632000 || v.Variants[1].Resolution != 400 {
 		t.Fatalf("video %+v", v)
 	}

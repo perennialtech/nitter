@@ -49,7 +49,7 @@ func renderPhotoAttachment(photo types.Photo, bigThumb bool) template.HTML {
 		thumb += smallWebp
 	}
 	return exec("photoAttachment", map[string]any{
-		"Orig": utils.OrigPicURL(photo.URL), "Thumb": thumb, "Alt": photo.AltText,
+		"Orig": utils.OrigPicURL(photo.URL), "Thumb": utils.PicURL(thumb), "Alt": photo.AltText, "Size": photo.Size,
 	})
 }
 

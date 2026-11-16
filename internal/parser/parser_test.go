@@ -319,7 +319,7 @@ func TestParseGraphArticle(t *testing.T) {
 		"core":{"user_results":{"result":{"rest_id":"1","legacy":{"screen_name":"w"}}}},
 		"views":{"count":"9"},"legacy":{"reply_count":1,"favorite_count":2},
 		"article":{"article_results":{"result":{"title":"Art","metadata":{"first_published_at_secs":1700000000},
-		  "cover_media":{"media_info":{"original_img_url":"https://pbs.twimg.com/media/c.jpg"}},
+		  "cover_media":{"media_info":{"original_img_url":"https://pbs.twimg.com/media/c.jpg","original_img_width":700,"original_img_height":280}},
 		  "content_state":{"blocks":[{"text":"Hello","type":"unstyled",
 		      "inlineStyleRanges":[{"offset":0,"length":5,"style":"Bold"}],"entityRanges":[{"offset":0,"length":5,"key":0}]}],
 		    "entityMap":[{"key":"0","value":{"type":"LINK","data":{"url":"https://e.com"}}},
@@ -330,7 +330,7 @@ func TestParseGraphArticle(t *testing.T) {
 	if a == nil {
 		t.Fatal("nil article")
 	}
-	if a.Title != "Art" || a.CoverImage != "pbs.twimg.com/media/c.jpg" || a.User.Username != "w" ||
+	if a.CoverSize != (types.MediaSize{Width: 700, Height: 280}) || a.Title != "Art" || a.CoverImage != "pbs.twimg.com/media/c.jpg" || a.User.Username != "w" ||
 		!a.Time.Equal(time.Unix(1700000000, 0)) || a.Stats.Views != 9 || a.Stats.Likes != 2 {
 		t.Errorf("article = %+v", a)
 	}

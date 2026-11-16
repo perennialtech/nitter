@@ -33,9 +33,11 @@ func ParseGraphArticle(js gjson.Result) *types.Article {
 		articleTime = parseTwitterDate(createdAt)
 	}
 
+	cover := jpath(article, "coverMedia", "mediaInfo")
 	result := &types.Article{
 		Title:      title,
-		CoverImage: expImageURL(str(jpath(article, "coverMedia", "mediaInfo", "originalImgUrl"))),
+		CoverImage: expImageURL(str(jfield(cover, "originalImgUrl"))),
+		CoverSize:  imageMediaSize(cover),
 		Time:       articleTime,
 		User:       parseUserResult(jpath(tweet, "core", "userResults", "result")),
 		Stats: types.TweetStats{
@@ -106,6 +108,7 @@ func ParseGraphArticle(js gjson.Result) *types.Article {
 		typeName := str(jfield(mediaInfo, "typeName", "__typename"))
 		media := types.ArticleMedia{Kind: typeName}
 		if videoInfo := jfield(mediaInfo, "videoInfo"); notNull(videoInfo) {
+			media.Size = legacyMediaSize(mediaInfo)
 			variants := arr(jfield(videoInfo, "variants"))
 			switch typeName {
 			case "ApiGif":
@@ -122,6 +125,7 @@ func ParseGraphArticle(js gjson.Result) *types.Article {
 				}
 			}
 		} else if typeName == "ApiImage" {
+			media.Size = imageMediaSize(mediaInfo)
 			media.URL = expImageURL(str(jfield(mediaInfo, "originalImgUrl")))
 		}
 		result.Media[str(jfield(me, "mediaId"))] = media

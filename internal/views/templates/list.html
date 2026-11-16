@@ -2,7 +2,7 @@
 {{- define "list" -}}
 <div class="timeline-container">
   {{- if .L.Banner}}
-  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank">{{genImg .L.Banner}}</a></div>
+  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank"><img src="{{url .BannerURL}}" alt="" decoding="async"{{template "mediaSize" .L.BannerSize}}></a></div>
   {{- end}}
   <div class="timeline-header">{{.Header}}
     <div class="timeline-description">{{.L.Description}}</div>
@@ -78,7 +78,7 @@
 {{- define "community" -}}
 <div class="timeline-container">
   {{- if .C.Banner}}
-  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank">{{genImg .C.Banner}}</a></div>
+  <div class="timeline-banner"><a href="{{url .BannerURL}}" target="_blank"><img src="{{url .BannerURL}}" alt="" decoding="async"{{template "mediaSize" .C.BannerSize}}></a></div>
   {{- end}}
   <div class="community-header">
     <h1 class="community-name"><a href="{{url .Path}}">{{.C.Name}}</a></h1>

@@ -107,6 +107,7 @@ type AccountInfo struct {
 }
 
 type Broadcast struct {
+	Size               MediaSize `json:",omitzero"`
 	ID                 string
 	Title              string
 	State              string
@@ -160,7 +161,17 @@ type VideoVariant struct {
 	Resolution  int
 }
 
+// MediaSize is the intrinsic size supplied by the upstream API.
+type MediaSize struct {
+	Width, Height int
+}
+
+func (s MediaSize) Valid() bool {
+	return s.Width > 0 && s.Height > 0
+}
+
 type Video struct {
+	Size         MediaSize `json:",omitzero"`
 	DurationMs   int
 	URL          string
 	Thumb        string
@@ -218,12 +229,14 @@ type Query struct {
 }
 
 type Gif struct {
+	Size    MediaSize `json:",omitzero"`
 	URL     string
 	Thumb   string
 	AltText string
 }
 
 type Photo struct {
+	Size    MediaSize `json:",omitzero"`
 	URL     string
 	AltText string
 }
@@ -266,6 +279,7 @@ type PhotoRail []GalleryPhoto
 type Article struct {
 	Title      string
 	CoverImage string
+	CoverSize  MediaSize `json:",omitzero"`
 	User       User
 	Time       time.Time
 	Stats      TweetStats
@@ -303,6 +317,7 @@ type ArticleEntity struct {
 }
 
 type ArticleMedia struct {
+	Size MediaSize `json:",omitzero"`
 	Kind string
 	URL  string
 }
@@ -509,6 +524,7 @@ type Profile struct {
 }
 
 type List struct {
+	BannerSize  MediaSize `json:",omitzero"`
 	ID          string
 	Name        string
 	UserID      string
@@ -531,6 +547,7 @@ type CommunityRule struct {
 }
 
 type Community struct {
+	BannerSize  MediaSize `json:",omitzero"`
 	ID          string
 	Name        string
 	Description string

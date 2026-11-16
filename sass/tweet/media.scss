@@ -88,14 +88,29 @@
   background-color: unset;
   width: unset;
   max-height: unset;
+
+  &:where(:has(> .attachment > img[width])) {
+    display: flex;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  img[width] {
+    max-width: 100%;
+    height: auto;
+  }
 }
 
 .media-gif video,
 .media-gif img {
-  width: 100%;
-  height: 100%;
   max-height: 530px;
   background-color: #101010;
+}
+
+.media-gif video,
+.media-gif img:not([width]) {
+  width: 100%;
+  height: 100%;
 }
 
 .still-image {
@@ -103,6 +118,7 @@
   max-width: 533px;
 
   img {
+    height: auto;
     object-fit: cover;
     max-width: 100%;
     max-height: 379.5px;

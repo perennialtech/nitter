@@ -77,15 +77,15 @@ func renderAtomicParagraph(par types.ArticleParagraph, a *types.Article, tweets 
 	}
 	switch entity.Kind {
 	case "MEDIA":
-		var items []map[string]string
+		var items []map[string]any
 		for _, id := range entity.MediaIDs {
 			m := a.Media[id]
 			if m.URL == "" {
 				continue
 			}
-			items = append(items, map[string]string{
+			items = append(items, map[string]any{
 				"Kind": m.Kind, "Vid": utils.VidURL(m.URL), "Orig": utils.OrigPicURL(m.URL),
-				"Small": smallPic(m.URL),
+				"Small": smallPic(m.URL), "Size": m.Size,
 			})
 		}
 		return exec("articleMedia", map[string]any{"Items": items, "Caption": entity.Caption})

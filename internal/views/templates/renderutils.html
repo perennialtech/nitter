@@ -75,6 +75,10 @@
 </div>
 {{- end}}
 
+{{- define "mediaSize" -}}
+{{- if .Valid}} width="{{.Width}}" height="{{.Height}}"{{end -}}
+{{- end}}
+
 {{- define "genImg" -}}
 <img src="{{url .Src}}"{{with .Class}} class="{{.}}"{{end}} alt="{{.Alt}}" loading="lazy">
 {{- end}}
