@@ -213,6 +213,7 @@ func ParseBroadcastInfo(js gjson.Result) types.Broadcast {
 		return types.Broadcast{User: emptyUser()}
 	}
 	return types.Broadcast{
+		Size:               types.MediaSize{Width: getInt(get(bc, "width")), Height: getInt(get(bc, "height"))},
 		ID:                 str(get(bc, "broadcast_id")),
 		Title:              str(get(bc, "status")),
 		State:              strings.ToUpper(str(get(bc, "state"))),
@@ -283,6 +284,7 @@ func ParseGraphCommunity(js gjson.Result) types.Community {
 		return types.Community{Creator: emptyUser()}
 	}
 
+	banner := get(c, "custom_banner_media.media_info")
 	result := types.Community{
 		ID:          strOr(get(c, "rest_id"), str(get(c, "id_str"))),
 		Name:        str(get(c, "name")),
@@ -290,7 +292,8 @@ func ParseGraphCommunity(js gjson.Result) types.Community {
 		MemberCount: getInt(get(c, "member_count")),
 		JoinPolicy:  str(get(c, "join_policy")),
 		Category:    str(get(c, "primary_community_topic.topic_name")),
-		Banner:      getImageStr(get(c, "custom_banner_media.media_info.original_img_url")),
+		Banner:      getImageStr(get(banner, "original_img_url")),
+		BannerSize:  imageMediaSize(banner),
 		Creator:     parseGraphUserNode(get(c, "creator_results.result")),
 	}
 
@@ -314,6 +317,10 @@ func ParseGraphCommunity(js gjson.Result) types.Community {
 }
 
 func parseListObject(js gjson.Result, owner types.User) types.List {
+	banner := get(js, "custom_banner_media.media_info")
+	if isNull(get(banner, "original_img_url")) {
+		banner = get(js, "default_banner_media.media_info")
+	}
 	return types.List{
 		ID:          str(get(js, "id_str")),
 		Name:        str(get(js, "name")),
@@ -321,10 +328,8 @@ func parseListObject(js gjson.Result, owner types.User) types.List {
 		UserID:      owner.ID,
 		Description: str(get(js, "description")),
 		Members:     getInt(get(js, "member_count")),
-		Banner: getImageStr(sel(
-			get(js, "custom_banner_media.media_info.original_img_url"),
-			get(js, "default_banner_media.media_info.original_img_url"),
-		)),
+		Banner:      getImageStr(get(banner, "original_img_url")),
+		BannerSize:  imageMediaSize(banner),
 	}
 }
 
@@ -423,8 +428,20 @@ func parseVideoVariants(variants gjson.Result) []types.VideoVariant {
 	return result
 }
 
+func legacyMediaSize(js gjson.Result) types.MediaSize {
+	return types.MediaSize{Width: getInt(get(js, "original_info.width")), Height: getInt(get(js, "original_info.height"))}
+}
+
+func imageMediaSize(js gjson.Result) types.MediaSize {
+	return types.MediaSize{
+		Width:  getInt(jfield(js, "originalImgWidth")),
+		Height: getInt(jfield(js, "originalImgHeight")),
+	}
+}
+
 func parseVideo(js gjson.Result) types.Video {
 	result := types.Video{
+		Size:         legacyMediaSize(js),
 		Thumb:        getImageStr(get(js, "media_url_https")),
 		Available:    true,
 		Title:        str(get(js, "ext_alt_text")),
@@ -465,6 +482,7 @@ func parseLegacyMediaEntities(js gjson.Result, result *types.Tweet) {
 		switch typeName(m) {
 		case "photo":
 			result.Media = append(result.Media, photoMedia(types.Photo{
+				Size:    legacyMediaSize(m),
 				URL:     getImageStr(get(m, "media_url_https")),
 				AltText: str(get(m, "ext_alt_text")),
 			}))
@@ -485,6 +503,7 @@ func parseLegacyMediaEntities(js gjson.Result, result *types.Tweet) {
 			}
 		case "animated_gif":
 			result.Media = append(result.Media, gifMedia(types.Gif{
+				Size:    legacyMediaSize(m),
 				URL:     getImageStr(get(idx(get(m, "video_info.variants"), 0), "url")),
 				Thumb:   getImageStr(get(m, "media_url_https")),
 				AltText: str(get(m, "ext_alt_text")),
@@ -507,12 +526,14 @@ func parseMediaEntities(js gjson.Result, result *types.Tweet) {
 		switch typeName(mediaInfo) {
 		case "ApiImage":
 			parsedMedia = append(parsedMedia, photoMedia(types.Photo{
+				Size:    imageMediaSize(mediaInfo),
 				URL:     getImageStr(get(mediaInfo, "original_img_url")),
 				AltText: str(get(mediaInfo, "alt_text")),
 			}))
 		case "ApiVideo":
 			status := get(mediaEntity, "media_results.result.media_availability_v2.status")
 			parsedMedia = append(parsedMedia, videoMedia(types.Video{
+				Size:         imageMediaSize(get(mediaInfo, "preview_image")),
 				Available:    str(status) == "Available",
 				Thumb:        getImageStr(get(mediaInfo, "preview_image.original_img_url")),
 				Title:        str(get(mediaInfo, "alt_text")),
@@ -535,6 +556,7 @@ func parseMediaEntities(js gjson.Result, result *types.Tweet) {
 			}
 		case "ApiGif":
 			parsedMedia = append(parsedMedia, gifMedia(types.Gif{
+				Size:    imageMediaSize(get(mediaInfo, "preview_image")),
 				URL:     getImageStr(get(idx(get(mediaInfo, "variants"), 0), "url")),
 				Thumb:   getImageStr(get(mediaInfo, "preview_image.original_img_url")),
 				AltText: str(get(mediaInfo, "alt_text")),

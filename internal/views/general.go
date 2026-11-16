@@ -22,7 +22,6 @@ type PageOpts struct {
 	RSS       string
 	Video     string
 	Images    []string
-	Banner    string
 	// TwitterLink is the "Open in X" link; RenderMain derives it from the
 	// request when empty. RenderHead emits it as the rel=alternate link
 	// (Nim's alternate parameter).
@@ -73,13 +72,11 @@ func renderNavbar(cfg *config.Config, r *http.Request, rss, canonical string) te
 	})
 }
 
-type headImage struct{ Preload, Image string }
-
 type headData struct {
 	Theme, SiteTitle, OpensearchURL, Alternate, RSS, Oembed, OembedTitle string
-	Title, OgType, OgTitle, Desc, BannerURL, TwitterCard, Video          string
+	Title, OgType, OgTitle, Desc, TwitterCard, Video                     string
 	HLS, InfiniteScroll                                                  bool
-	Images                                                               []headImage
+	Images                                                               []string
 }
 
 // RenderHead renders the <head> element.
@@ -122,20 +119,10 @@ func RenderHead(p *prefs.Prefs, cfg *config.Config, r *http.Request, o PageOpts)
 	if o.OgTitle != "" {
 		d.OgTitle = o.OgTitle
 	}
-	if o.Banner != "" && !strings.HasPrefix(o.Banner, "#") {
-		d.BannerURL = utils.PicURL(o.Banner)
-	}
 	for _, u := range o.Images {
-		if u == "" {
-			continue
+		if u != "" {
+			d.Images = append(d.Images, cfg.URLPrefix()+utils.PicURL(u))
 		}
-		img := headImage{Image: cfg.URLPrefix() + utils.PicURL(u)}
-		if strings.Contains(u, "400x400") {
-			img.Preload = utils.PicURL(u)
-		} else {
-			img.Preload = smallPic(u)
-		}
-		d.Images = append(d.Images, img)
 	}
 	return exec("head", d)
 }

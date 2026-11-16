@@ -310,6 +310,35 @@ func TestTweetSelectors(t *testing.T) {
 	requireSel(t, parse(t, RenderTweet(tw, &p, "", TweetOpts{})), ".attachments.card .gallery-video video source")
 }
 
+func TestAttachmentDimensions(t *testing.T) {
+	tw := richTweet()
+	tw.Media[0].Photo.Size = types.MediaSize{Width: 640, Height: 360}
+	tw.Media[1].Photo.Size = types.MediaSize{Width: -640, Height: 360}
+	tw.Media[2].Video.Size = types.MediaSize{Width: 720, Height: 1280}
+	p := prefs.Defaults
+	for _, enabled := range []bool{false, true} {
+		p.Mp4Playback = enabled
+		doc := parse(t, RenderTweet(tw, &p, "/jack/status/1", TweetOpts{}))
+		requireSel(t, doc, `.still-image img[alt="alt"][width="640"][height="360"]`)
+		element := "img"
+		if enabled {
+			element = "video"
+		}
+		requireSel(t, doc, `.attachment `+element+`[width="720"][height="1280"]`)
+		for _, img := range queryAll(doc, `.still-image img[alt=""]`) {
+			if _, ok := attrOf(img, "width"); ok {
+				t.Error("invalid media dimensions emitted")
+			}
+		}
+	}
+	mixed := parse(t, renderMedia([]types.Media{tw.Media[0], tw.Media[2]}, &p, "/", true))
+	requireSel(t, mixed, `.mixed-row[style*="aspect-ratio: 2 / 1.77777778"]`)
+	unknown := parse(t, renderMedia([]types.Media{tw.Media[1], tw.Media[2]}, &p, "/", true))
+	if len(queryAll(unknown, `.mixed-row[style*="aspect-ratio"]`)) != 0 {
+		t.Error("mixed row reserves unknown media dimensions")
+	}
+}
+
 func TestRetweetAndUnavailable(t *testing.T) {
 	p := prefs.Defaults
 	rt := &types.Tweet{
@@ -453,6 +482,10 @@ func TestPages(t *testing.T) {
 	requireSel(t, doc, `link[href="/css/themes/catppuccin_frappe.css"]`, ".search-bar input",
 		`.icon-cog[href="/settings?referer=%2Fjack%2Fstatus%2F1%3Fx%3D1%23m"]`,
 		`.icon-rss[href="/jack/rss"]`, `meta[content="summary"]`, `body.fixed-nav`, ".container .panel-container")
+	requireSel(t, doc, `link[rel="preload"][as="font"][href="/fonts/fontello.woff2?73825041"]`, `meta[property="og:image"]`)
+	if strings.Contains(page, `href="/css/fontello.css`) || strings.Contains(page, `as="image"`) {
+		t.Error("page head requests an extra stylesheet or a social preview image")
+	}
 	if !strings.HasPrefix(page, "<!DOCTYPE html>") || !strings.Contains(page, "<title>T | Nitter</title>") {
 		t.Error("main page shell")
 	}
@@ -485,8 +518,12 @@ func TestPages(t *testing.T) {
 			t.Errorf("%s:\n%s", name, s)
 		}
 	}
-	requireSel(t, parse(t, template.HTML(RenderVideoEmbed(tw, cfg, r))), ".embed-video .gallery-video",
-		`meta[property="og:video:url"]`)
+	videoEmbed := RenderVideoEmbed(tw, cfg, r)
+	requireSel(t, parse(t, template.HTML(videoEmbed)), ".embed-video .gallery-video",
+		`meta[property="og:video:url"]`, `script[src="/js/hlsPlayback.js?v=3"]`)
+	if strings.Contains(videoEmbed, `src="/js/hls.min.js"`) {
+		t.Error("video embed loads the HLS library before playback")
+	}
 }
 
 func TestOtherViews(t *testing.T) {

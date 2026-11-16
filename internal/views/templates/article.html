@@ -3,11 +3,11 @@
 <div class="article-media">
   {{- range .Items}}
   {{- if eq .Kind "ApiGif"}}
-  <video src="{{url .Vid}}" controls="" autoplay="" loop="" muted=""></video>
+  <video src="{{url .Vid}}"{{template "mediaSize" .Size}} controls="" autoplay="" loop="" muted=""></video>
   {{- else if eq .Kind "ApiVideo"}}
-  <video src="{{url .Vid}}" controls=""></video>
+  <video src="{{url .Vid}}"{{template "mediaSize" .Size}} controls=""></video>
   {{- else}}
-  <a href="{{url .Orig}}" target="_blank"><img src="{{url .Small}}" alt="{{$.Caption}}" loading="lazy"></a>
+  <a href="{{url .Orig}}" target="_blank"><img src="{{url .Small}}" alt="{{$.Caption}}" loading="lazy"{{template "mediaSize" .Size}}></a>
   {{- end}}
   {{- end}}
   {{- with .Caption}}
@@ -23,7 +23,7 @@
 {{- define "article" -}}
 <div class="article-page">
   {{- if .A.CoverImage}}
-  <a href="{{url .CoverURL}}" target="_blank"><img class="article-cover" src="{{url .CoverSrc}}" alt=""></a>
+  <a href="{{url .CoverURL}}" target="_blank"><img class="article-cover" src="{{url .CoverSrc}}" alt=""{{template "mediaSize" .A.CoverSize}}></a>
   {{- end}}
   <article class="article-body">
     <h1 class="article-title">{{.A.Title}}</h1>

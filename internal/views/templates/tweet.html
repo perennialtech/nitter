@@ -51,7 +51,7 @@
 
 {{- define "photoAttachment" -}}
 <div class="attachment">
-  <a href="{{url .Orig}}" class="still-image" target="_blank">{{genImg .Thumb "" .Alt}}</a>
+  <a href="{{url .Orig}}" class="still-image" target="_blank"><img src="{{url .Thumb}}" alt="{{.Alt}}" loading="lazy"{{template "mediaSize" .Size}}></a>
   {{- with .Alt}}{{template "altText" .}}{{end}}
 </div>
 {{- end}}
@@ -65,14 +65,14 @@
 {{- end}}
 
 {{- define "videoAttachment" -}}
-<div class="attachment">
+<div class="attachment"{{if .V.Size.Valid}} style="--video-width: {{.V.Size.Width}}px"{{end}}>
   {{- if not .Playable}}
-  <img src="{{url .Thumb}}" loading="lazy">
+  <img src="{{url .Thumb}}" loading="lazy"{{template "mediaSize" .V.Size}}>
   {{- .Overlay}}
   {{- else if .MP4}}
-  <video poster="{{url .Thumb}}" controls=""{{if .Muted}} muted=""{{end}}><source src="{{url .Source}}" type="video/mp4"></video>
+  <video poster="{{url .Thumb}}"{{template "mediaSize" .V.Size}} controls=""{{if .Muted}} muted=""{{end}}><source src="{{url .Source}}" type="video/mp4"></video>
   {{- else}}
-  <video poster="{{url .Thumb}}" data-url="{{url .Source}}" data-autoload="false"{{if .Muted}} muted=""{{end}}></video>
+  <video poster="{{url .Thumb}}"{{template "mediaSize" .V.Size}} data-url="{{url .Source}}" data-autoload="false"{{if .Muted}} muted=""{{end}}></video>
   <div class="video-overlay" onclick="playVideo(this)">
     <div class="overlay-circle"><span class="overlay-triangle"></span></div>
     {{- with .Duration}}
@@ -105,12 +105,12 @@
 {{- define "gifAttachment" -}}
 <div class="attachment">
   {{- if .Disabled}}
-  <img src="{{url .Thumb}}" loading="lazy">
+  <img src="{{url .Thumb}}" loading="lazy"{{template "mediaSize" .G.Size}}>
   {{- .Disabled}}
   {{- else if .P.AutoplayGifs}}
-  <video class="gif" poster="{{url .Thumb}}" autoplay="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
+  <video class="gif" poster="{{url .Thumb}}"{{template "mediaSize" .G.Size}} autoplay="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
   {{- else}}
-  <video class="gif" poster="{{url .Thumb}}" controls="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
+  <video class="gif" poster="{{url .Thumb}}"{{template "mediaSize" .G.Size}} controls="" muted="" loop=""><source src="{{url .Src}}" type="video/mp4"></video>
   {{- end}}
   {{- with .G.AltText}}{{template "altText" .}}{{end}}
 </div>

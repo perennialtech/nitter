@@ -38,7 +38,7 @@ func (s *Server) listRoutes() {
 		if s.cfg.EnableRSSList {
 			rss = "/i/lists/" + c.param("id") + "/rss"
 		}
-		return c.page(views.RenderList(body, q, l), views.PageOpts{TitleText: listTitle(l), RSS: rss, Banner: l.Banner})
+		return c.page(views.RenderList(body, q, l), views.PageOpts{TitleText: listTitle(l), RSS: rss})
 	}
 
 	s.get("/@name/lists/@slug/?", func(c *ctx) error {
@@ -108,7 +108,7 @@ func (s *Server) communityRoutes() {
 			if cm.ID == "" || cm.Name == "" {
 				return c.fail(http.StatusNotFound, `Community "`+c.param("id")+`" not found`)
 			}
-			return c.page(views.RenderCommunity(body, nav, cm), views.PageOpts{TitleText: title, Banner: cm.Banner})
+			return c.page(views.RenderCommunity(body, nav, cm), views.PageOpts{TitleText: title})
 		})
 	}
 	tweets := func(c *ctx, tl types.Timeline, err error) (template.HTML, error) {

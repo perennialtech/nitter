@@ -8,6 +8,7 @@ video {
 
 .gallery-video {
   display: flex;
+  max-width: 100%;
   overflow: hidden;
   
   &.card-container {
@@ -22,10 +23,17 @@ video {
     margin: 0;
 
     img {
+      height: auto;
       max-height: 100%;
       max-width: 100%;
     }
   }
+}
+
+:where(.gallery-video > .attachment) > video[width] {
+  width: var(--video-width);
+  max-width: 100%;
+  height: auto;
 }
 
 .video-download {

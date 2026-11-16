@@ -4,7 +4,7 @@
   <div class="broadcast-panel">
     <div class="broadcast-player">
       {{- if and .BC.M3u8URL .P.HlsPlayback}}
-      <video poster="{{url .Thumb}}" data-url="{{url .Source}}" data-autoload="false" data-start="{{.Start}}"{{if .P.MuteVideos}} muted=""{{end}}></video>
+      <video poster="{{url .Thumb}}"{{template "mediaSize" .BC.Size}} data-url="{{url .Source}}" data-autoload="false" data-start="{{.Start}}"{{if .P.MuteVideos}} muted=""{{end}}></video>
       <div class="video-overlay" onclick="playVideo(this)">
         <div class="overlay-circle"><span class="overlay-triangle"></span></div>
         {{- if .Live}}
@@ -14,7 +14,7 @@
         {{- end}}
       </div>
       {{- else if .BC.M3u8URL}}
-      <img src="{{url .Thumb}}" alt="{{.BC.Title}}">
+      <img src="{{url .Thumb}}" alt="{{.BC.Title}}"{{template "mediaSize" .BC.Size}}>
       <div class="video-overlay">
         {{- .EnableHLS}}
         {{- if .Live}}
@@ -24,7 +24,7 @@
         {{- end}}
       </div>
       {{- else if .BC.Thumb}}
-      <img src="{{url .Thumb}}" alt="{{.BC.Title}}">
+      <img src="{{url .Thumb}}" alt="{{.BC.Title}}"{{template "mediaSize" .BC.Size}}>
       <div class="video-overlay">
         {{- if .BC.AvailableForReplay}}<p>Stream unavailable</p>{{else}}<p>Replay is not available</p>{{end -}}
       </div>

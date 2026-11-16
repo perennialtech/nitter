@@ -18,8 +18,8 @@
 
 {{- define "head" -}}
 <head>
-  <link rel="stylesheet" type="text/css" href="/css/style.css?v=106">
-  <link rel="stylesheet" type="text/css" href="/css/fontello.css?v=7">
+  <link rel="stylesheet" type="text/css" href="/css/style.css?v=107">
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/fontello.woff2?73825041" crossorigin="anonymous">
   {{- with .Theme}}
   <link rel="stylesheet" type="text/css" href="{{url .}}">
   {{- end}}
@@ -39,8 +39,7 @@
   <link rel="alternate" type="application/json+oembed" href="{{url .}}" title="{{$.OembedTitle}}">
   {{- end}}
   {{- if .HLS}}
-  <script src="/js/hls.min.js" defer=""></script>
-  <script src="/js/hlsPlayback.js?v=2" defer=""></script>
+  <script src="/js/hlsPlayback.js?v=3" defer=""></script>
   {{- end}}
   {{- if .InfiniteScroll}}
   <script src="/js/infiniteScroll.js" defer=""></script>
@@ -54,13 +53,9 @@
   <meta property="og:description" content="{{.Desc}}">
   <meta property="og:site_name" content="Nitter">
   <meta property="og:locale" content="en_US">
-  {{- with .BannerURL}}
-  <link rel="preload" type="image/png" href="{{url .}}" as="image">
-  {{- end}}
   {{- range .Images}}
-  <link rel="preload" type="image/png" href="{{url .Preload}}" as="image">
-  <meta property="og:image" content="{{.Image}}">
-  <meta property="twitter:image:src" content="{{.Image}}">
+  <meta property="og:image" content="{{.}}">
+  <meta property="twitter:image:src" content="{{.}}">
   <meta property="twitter:card" content="{{$.TwitterCard}}">
   {{- end}}
   {{- with .Video}}
@@ -68,7 +63,6 @@
   <meta property="og:video:secure_url" content="{{.}}">
   <meta property="og:video:type" content="text/html">
   {{- end}}
-  <link rel="preload" type="font/woff2" as="font" href="/fonts/fontello.woff2?59696369" crossorigin="anonymous">
 </head>
 {{- end}}
 

@@ -81,7 +81,7 @@ func renderPhotoRail(profile *types.Profile) template.HTML {
 }
 
 func renderBanner(banner string) template.HTML {
-	d := map[string]any{"Banner": banner}
+	d := map[string]any{}
 	switch {
 	case banner == "":
 	case strings.HasPrefix(banner, "#"):

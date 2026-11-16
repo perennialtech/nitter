@@ -49,7 +49,7 @@ func renderPhotoAttachment(photo types.Photo, bigThumb bool) template.HTML {
 		thumb += smallWebp
 	}
 	return exec("photoAttachment", map[string]any{
-		"Orig": utils.OrigPicURL(photo.URL), "Thumb": thumb, "Alt": photo.AltText,
+		"Orig": utils.OrigPicURL(photo.URL), "Thumb": utils.PicURL(thumb), "Alt": photo.AltText, "Size": photo.Size,
 	})
 }
 
@@ -203,18 +203,34 @@ func renderMedia(media []types.Media, p *prefs.Prefs, path string, bigThumb bool
 		if i > 0 {
 			row.Style = "margin-top: .25em;"
 		}
+		allSized := true
+		var tallest float64
 		for _, m := range group {
+			var size types.MediaSize
 			if m.Kind != types.PhotoMedia {
 				row.Class = "gallery-row mixed-row"
 			}
 			switch m.Kind {
 			case types.PhotoMedia:
 				row.Items = append(row.Items, renderPhotoAttachment(m.Photo, bigThumb))
+				size = m.Photo.Size
 			case types.VideoMedia:
 				row.Items = append(row.Items, renderVideoAttachment(m.Video, p, path, bigThumb))
+				size = m.Video.Size
 			case types.GifMedia:
 				row.Items = append(row.Items, renderGifAttachment(m.Gif, p, path))
+				size = m.Gif.Size
 			}
+			if size.Valid() {
+				tallest = max(tallest, float64(size.Height)/float64(size.Width))
+			} else {
+				allSized = false
+			}
+		}
+		if allSized && len(group) > 1 && row.Class == "gallery-row mixed-row" {
+			// Mixed rows split the available width evenly. Reserve the height
+			// of the tallest tile before the browser receives any media.
+			row.Style += template.CSS(fmt.Sprintf("width: 100%%; aspect-ratio: %d / %.8f;", len(group), tallest))
 		}
 		rows = append(rows, row)
 	}

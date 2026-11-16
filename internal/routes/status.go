@@ -203,8 +203,20 @@ func (s *Server) statusRoutes() {
 			return c.fail(http.StatusNotFound, "Invalid tweet ID")
 		}
 		ctx, p := c.r.Context(), c.prefs()
-		conv, err := api.Tweet(ctx, id, "", types.RankingRelevance)
-		if err != nil {
+		var (
+			g     group
+			conv  *types.Conversation
+			notes types.BirdwatchNotes
+		)
+		g.go_(func() (err error) {
+			conv, err = api.Tweet(ctx, id, "", types.RankingRelevance)
+			return err
+		})
+		g.go_(func() (err error) {
+			notes, err = api.GraphBirdwatchNotes(ctx, id)
+			return err
+		})
+		if err := g.wait(); err != nil {
 			return err
 		}
 		var tweet *types.Tweet
@@ -212,10 +224,6 @@ func (s *Server) statusRoutes() {
 			tweet = conv.Tweet
 		}
 		translate := c.param("tr") == "1"
-		notes, err := api.GraphBirdwatchNotes(ctx, id)
-		if err != nil {
-			return err
-		}
 		for i := range notes.Notes {
 			api.ApplyOnDemandNoteCache(&notes.Notes[i])
 		}

@@ -3,12 +3,17 @@
   margin: 0 auto 20px;
   background-color: var(--bg_panel);
 
+  &:has(> a > .article-cover[width]) {
+    width: 100%;
+  }
+
   > .top-ref {
     padding-top: 20px;
   }
 
   .article-cover {
     width: 100%;
+    height: auto;
     display: block;
   }
 
@@ -187,6 +192,7 @@
       img,
       video {
         max-width: 100%;
+        height: auto;
         border-radius: 12px;
       }
 
