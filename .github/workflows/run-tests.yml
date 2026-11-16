@@ -73,6 +73,9 @@ jobs:
           name: nitter-linux-${{ github.sha }}
           path: .
 
+      - name: Test fork commit tracker
+        run: python3 -m unittest discover -s tests -p test_track_fork_commits.py -v
+
       - name: Test local pages and Catppuccin themes
         run: |
           chmod +x ./nitter
