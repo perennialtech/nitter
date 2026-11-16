@@ -512,8 +512,12 @@ func TestPages(t *testing.T) {
 			t.Errorf("%s:\n%s", name, s)
 		}
 	}
-	requireSel(t, parse(t, template.HTML(RenderVideoEmbed(tw, cfg, r))), ".embed-video .gallery-video",
-		`meta[property="og:video:url"]`)
+	videoEmbed := RenderVideoEmbed(tw, cfg, r)
+	requireSel(t, parse(t, template.HTML(videoEmbed)), ".embed-video .gallery-video",
+		`meta[property="og:video:url"]`, `script[src="/js/hlsPlayback.js?v=3"]`)
+	if strings.Contains(videoEmbed, `src="/js/hls.min.js"`) {
+		t.Error("video embed loads the HLS library before playback")
+	}
 }
 
 func TestOtherViews(t *testing.T) {
