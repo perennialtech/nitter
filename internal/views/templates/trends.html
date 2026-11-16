@@ -1,0 +1,55 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */}}
+{{- define "trendsTabsNav" -}}
+<ul class="tab trends-tab-nav">
+  {{- range . }}
+  <li class="tab-item{{if .Active}} active{{end}}"><a href="{{.URL}}"{{if .Active}} aria-current="page"{{end}}>{{.Label}}</a></li>
+  {{- end }}
+</ul>
+{{- end -}}
+
+{{- define "trendsPage" -}}
+<div class="timeline-container trends-page">
+  <h1 class="timeline-header">{{.Page.Title}}</h1>
+  {{- with .Page.Tabs}}{{template "trendsTabsNav" .}}{{end}}
+  {{- with .Page.Sort}}
+  <div class="reply-sort">
+    <span class="reply-sort-label">Sort stories</span>
+    {{- range .}}
+    <a class="reply-sort-option{{if .Active}} active{{end}}" href="{{.URL}}"{{if .Active}} aria-current="page"{{end}}>{{.Label}}</a>
+    {{- end}}
+  </div>
+  {{- end}}
+  {{- .Results}}
+</div>
+{{- end -}}
+
+{{- define "storyItem" -}}
+<div class="timeline-item story-item">
+  <a class="story-link" href="/i/trending/{{.Story.ID}}">
+    <div class="story-meta">
+      {{- with .Story.Category}}<span>{{.}}</span>{{end}}
+      {{- if gt .Story.PostCount 0}}<span>{{.Count}} {{if eq .Story.PostCount 1}}post{{else}}posts{{end}}</span>{{end}}
+      {{- with .Date}}<span>{{.}}</span>{{end}}
+    </div>
+    <h2>{{.Story.Title}}</h2>
+    {{- with .Story.Hook}}<p>{{.}}</p>{{end}}
+  </a>
+</div>
+{{- end -}}
+
+{{- define "emptyStories" -}}
+<div class="timeline-header"><h2 class="timeline-none">No stories available right now.</h2></div>
+{{- end -}}
+
+{{- define "storyDetail" -}}
+<div class="timeline-container trends-page">
+  <div class="story-detail">
+    <h1>{{if .Detail.Title}}{{.Detail.Title}}{{else}}Trending{{end}}</h1>
+    {{- with .Updated}}<div class="story-meta">Last updated {{.}}</div>{{end}}
+    {{- with .Detail.Summary}}<p class="story-summary">{{.}}</p>{{end}}
+    {{- with .Detail.Disclaimer}}<p class="story-meta">{{.}}</p>{{end}}
+  </div>
+  {{- template "trendsTabsNav" .Tabs}}
+  {{- .Posts}}
+</div>
+{{- end -}}
