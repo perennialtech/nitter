@@ -3,6 +3,10 @@
   margin: 0 auto 20px;
   background-color: var(--bg_panel);
 
+  &:has(> a > .article-cover[width]) {
+    width: 100%;
+  }
+
   > .top-ref {
     padding-top: 20px;
   }

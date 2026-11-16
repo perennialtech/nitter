@@ -65,7 +65,7 @@
 {{- end}}
 
 {{- define "videoAttachment" -}}
-<div class="attachment">
+<div class="attachment"{{if .V.Size.Valid}} style="--video-width: {{.V.Size.Width}}px"{{end}}>
   {{- if not .Playable}}
   <img src="{{url .Thumb}}" loading="lazy"{{template "mediaSize" .V.Size}}>
   {{- .Overlay}}
