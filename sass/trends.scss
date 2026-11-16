@@ -80,3 +80,73 @@
   opacity: 1;
   border-bottom: 0.1em solid var(--accent);
 }
+
+.trends-page .timeline-header {
+  font-size: 1.125rem;
+  margin-top: 0;
+}
+
+.trends-tab-nav .tab-item a {
+  padding-inline: 8px;
+}
+
+.trends-page .trend-item a,
+.story-link,
+.story-detail {
+  background-color: var(--bg_panel);
+  padding: 12px 16px;
+}
+
+.trends-page .trend-item {
+  padding: 0;
+  border-bottom: 1px solid var(--border_grey);
+}
+
+.story-item {
+  padding: 0;
+}
+
+.story-link {
+  display: block;
+  color: var(--fg_color);
+
+  &:hover {
+    text-decoration: none;
+    background-color: var(--bg_hover);
+
+    h2 {
+      text-decoration: underline;
+    }
+  }
+}
+
+.story-link h2,
+.story-detail h1 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.story-link p,
+.story-detail p {
+  margin: 0.4em 0 0;
+}
+
+.story-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em 0.75em;
+  color: var(--fg_faded);
+  font-size: 0.85rem;
+}
+
+.story-meta:empty {
+  display: none;
+}
+
+.story-detail {
+  margin-bottom: 4px;
+}
+
+.story-summary {
+  white-space: pre-wrap;
+}

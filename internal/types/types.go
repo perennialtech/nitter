@@ -579,6 +579,26 @@ type Trend struct {
 	TweetVolume int
 }
 
+type Story struct {
+	ID, Title, Category, Hook string
+	PostCount, CreatedMs      int64
+}
+
+type StoryPage struct {
+	Stories []Story
+	Bottom  string
+}
+
+type StoryTimeline struct {
+	Label, ID string
+}
+
+type StoryDetail struct {
+	Title, Summary, Disclaimer string
+	UpdatedMs                  int64
+	Timelines                  []StoryTimeline
+}
+
 func (t *Tweet) Photos() []Photo {
 	var out []Photo
 	for _, m := range t.Media {

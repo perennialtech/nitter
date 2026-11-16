@@ -152,6 +152,10 @@ var Options = []Option{
 	boolean("Config", "enableTrends", func(c *Config) *bool { return &c.EnableTrends }, false,
 		"Show a panel of trending topics with two tabs on the homepage. Trends "+
 			"are fetched without using a session."),
+	boolean("Config", "enableTrendsPages", func(c *Config) *bool { return &c.EnableTrendsPages }, false,
+		"Show a navbar link to /i/trends and serve the news and story pages. "+
+			"Geographic trends are fetched without a session. The News tab and "+
+			"/i/trending require account sessions and are disabled in guestAuth mode."),
 	str("Config", "trendsTab1Name", func(c *Config) *string { return &c.TrendsTab1Name }, "United States",
 		"Label of the first trends tab, which is shown when the homepage loads."),
 	integer("Config", "trendsTab1Woeid", func(c *Config) *int { return &c.TrendsTab1Woeid }, 23424977,
@@ -162,7 +166,7 @@ var Options = []Option{
 	integer("Config", "trendsTab2Woeid", func(c *Config) *int { return &c.TrendsTab2Woeid }, 1,
 		"WOEID of the place whose trends the second tab shows, as for trendsTab1Woeid."),
 	integer("Config", "trendsCacheMinutes", func(c *Config) *int { return &c.TrendsCacheMinutes }, 15,
-		"Minutes to keep each place's trends before fetching them again."),
+		"Minutes to keep each place's trends, the first news page and story details before fetching them again."),
 	integer("Config", "trendsMaxItems", func(c *Config) *int { return &c.TrendsMaxItems }, 15,
 		"Trends to show per tab, at most. The API returns about 50; a negative value shows all of them."),
 	boolean("Config", "enableDebug", func(c *Config) *bool { return &c.EnableDebug }, false,

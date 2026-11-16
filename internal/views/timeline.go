@@ -67,8 +67,12 @@ func RenderToTop(focus string) template.HTML {
 
 // RenderNewer renders the "Load newest" link.
 func RenderNewer(q types.Query, path, focus string) template.HTML {
+	return renderNewer(q, path, focus, "")
+}
+
+func renderNewer(q types.Query, path, focus, extra string) template.HTML {
 	u := ""
-	if s := query.URL(q); s != "" {
+	if s := strings.TrimSuffix(extra+query.URL(q), "&"); s != "" {
 		u = "?" + s
 	}
 	if focus != "" {
@@ -236,6 +240,11 @@ func filterThreads(threads []types.Tweets, p *prefs.Prefs) []types.Tweets {
 
 // RenderTimelineTweets renders a timeline. pinned may be nil.
 func RenderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, pinned *types.Tweet) template.HTML {
+	return renderTimelineTweets(results, p, path, pinned, "")
+}
+
+// extra carries non-search pagination parameters, with a trailing ampersand.
+func renderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, pinned *types.Tweet, extra string) template.HTML {
 	d := map[string]any{"Class": timelineViewClass(results.Query)}
 	if !results.Beginning {
 		u, err := url.Parse(path)
@@ -243,7 +252,7 @@ func RenderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, p
 		if err == nil {
 			newerPath = u.EscapedPath()
 		}
-		d["Newer"] = RenderNewer(results.Query, newerPath, "")
+		d["Newer"] = renderNewer(results.Query, newerPath, "", extra)
 	}
 	if !p.HidePins && pinned != nil {
 		d["Pinned"] = RenderTweet(pinned, p, path, TweetOpts{})
@@ -280,9 +289,9 @@ func RenderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, p
 	d["Items"] = items
 
 	if cursor := getSearchMaxID(results); cursor != "" {
-		d["More"] = RenderMore(results.Query, cursor, "", "")
+		d["More"] = RenderMore(results.Query, cursor, "", extra)
 	} else if results.Bottom != "" {
-		d["More"] = RenderMore(results.Query, results.Bottom, "", "")
+		d["More"] = RenderMore(results.Query, results.Bottom, "", extra)
 	}
 	d["ToTop"] = RenderToTop("#")
 	return exec("timelineTweets", d)

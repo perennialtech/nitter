@@ -38,6 +38,7 @@ func New(cfg *config.Config) (http.Handler, error) {
 	}
 	s := &Server{cfg: cfg, themes: themes}
 	s.generalRoutes()
+	s.trendsRoutes()
 	s.articleRoutes()
 	s.rssRoutes()
 	s.statusRoutes()

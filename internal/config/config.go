@@ -43,6 +43,7 @@ type Config struct {
 	GuestAuth               bool
 	GuestPoolSize           int
 	EnableTrends            bool
+	EnableTrendsPages       bool
 	TrendsTab1Name          string
 	TrendsTab1Woeid         int
 	TrendsTab2Name          string
