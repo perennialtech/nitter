@@ -225,16 +225,18 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           const knownHrefs = getHrefs(`${itemClass} .tweet-link`);
           for (const item of doc.querySelectorAll(itemClass)) {
-            if (item.classList.contains("show-more") || isDuplicate(item, knownHrefs)) continue;
+            if (isDuplicate(item, knownHrefs)) continue;
             isTweet ? container.appendChild(item) : insertBeforeLast(container, item);
           }
         }
 
         loading = false;
-        const newLoadMore = getLoadMore(doc);
-        if (newLoadMore) {
-          isTweet ? container.appendChild(newLoadMore) : insertBeforeLast(container, newLoadMore);
-          if (masonry) newLoadMore.classList.add("masonry-visible");
+        // Some timeline routes return a footer in a 200 response when exhausted.
+        const footer = isTweet ? null : doc.querySelector(".timeline > .timeline-footer");
+        const pagination = getLoadMore(doc) || footer;
+        if (pagination) {
+          isTweet ? container.appendChild(pagination) : insertBeforeLast(container, pagination);
+          if (masonry) pagination.classList.add("masonry-visible");
         }
       })
       .catch(err => {
