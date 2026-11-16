@@ -56,9 +56,10 @@ type Config struct {
 	OnDemandTranslation     bool
 	OnDemandTranslationLang string
 
-	RssCacheTime  int
-	ListCacheTime int
-	CacheMaxMB    int
+	RssCacheTime        int
+	ListCacheTime       int
+	UserTweetsCacheTime int
+	CacheMaxMB          int
 
 	// Preferences holds the raw [Preferences] section, which overrides the
 	// default value of each preference.

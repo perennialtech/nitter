@@ -118,10 +118,11 @@ type apiURL struct {
 type apiReq struct {
 	oauth  apiURL
 	cookie apiURL
+	search bool
 }
 
 func (r apiReq) auth() auth.Req {
-	return auth.Req{OAuth: r.oauth.endpoint, Cookie: r.cookie.endpoint}
+	return auth.Req{OAuth: r.oauth.endpoint, Cookie: r.cookie.endpoint, Search: r.search}
 }
 
 func (r apiReq) forKind(kind auth.Kind) apiURL {
@@ -626,19 +627,33 @@ func isJSONStart(body string) bool {
 // fetch requests req and parses the response. A response that isn't JSON
 // parses as null.
 func fetch(ctx context.Context, req apiReq) (gjson.Result, error) {
+	return fetchValidated(ctx, req, nil)
+}
+
+// fetchValidated checks the response before marking an attempt successful.
+// A validator can return types.ErrRateLimited to retry a valid JSON response
+// that upstream did not populate.
+func fetchValidated(ctx context.Context, req apiReq, validate func(gjson.Result) error) (gjson.Result, error) {
 	body, err := retry(ctx, req, func(body string) (string, error) {
 		if !isJSONStart(body) {
 			log.Printf("non-JSON response: %s --- API: %s", body, req.cookie.endpoint)
+			if validate != nil {
+				return "", validate(gjson.Result{})
+			}
 			return "", nil
 		}
 		if !gjson.Valid(body) {
 			return "", errors.New("invalid JSON response")
 		}
-		if code := getError(gjson.Parse(body)); !slices.Contains(errorsToSkip, code) {
+		js := gjson.Parse(body)
+		if code := getError(js); !slices.Contains(errorsToSkip, code) {
 			log.Printf("Fetch error, API: %s, error: %d", req.cookie.endpoint, code)
 			if slices.Contains([]types.ErrorCode{types.ErrExpiredToken, types.ErrBadToken, types.ErrLocked}, code) {
 				return "", errInvalidSession
 			}
+		}
+		if validate != nil {
+			return body, validate(js)
 		}
 		return body, nil
 	})

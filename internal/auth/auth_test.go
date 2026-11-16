@@ -476,6 +476,44 @@ func TestRateLimitedSessionsAreSkipped(t *testing.T) {
 	}
 }
 
+func TestSuspendedSessionsAreSkippedOnlyForSearch(t *testing.T) {
+	setup(t, 1, 2)
+	search := Req{Cookie: "search", OAuth: "search", Search: true}
+	for _, line := range []string{
+		`{"kind":"cookie","auth_token":"a","ct0":"c","suspended":true}`,
+		`{"oauth_token":"123-a","oauth_token_secret":"secret","suspended":"TRUE"}`,
+	} {
+		suspended, err := ParseSession(line)
+		if err != nil || !suspended.suspended {
+			t.Fatalf("failed to parse suspended session: %v", err)
+		}
+		mu.Lock()
+		sessionPool = []*Session{suspended}
+		mu.Unlock()
+		if _, err := GetSession(search); !errors.Is(err, types.ErrNoSessions) {
+			t.Fatalf("search acquired a suspended session: %v", err)
+		}
+		s, err := GetSession(request)
+		if err != nil || s != suspended {
+			t.Fatalf("profile endpoint could not acquire suspended session: %v", err)
+		}
+		Release(s)
+
+		ready, err := ParseSession(strings.NewReplacer(`"TRUE"`, "false", ":true", ":false").Replace(line))
+		if err != nil || ready.suspended {
+			t.Fatalf("failed to parse recovered session: %v", err)
+		}
+		mu.Lock()
+		sessionPool = append(sessionPool, ready)
+		mu.Unlock()
+		s, err = GetSession(search)
+		if err != nil || s != ready {
+			t.Fatalf("search did not acquire recovered session: %v", err)
+		}
+		Release(s)
+	}
+}
+
 func TestLoneReadySessionIsAlwaysFound(t *testing.T) {
 	setup(t, 1, 2)
 	ready := &Session{Kind: Cookie, AuthToken: "ready", Ct0: "c"}

@@ -1279,6 +1279,20 @@ func addSingles(content []types.Tweets, tweets []*types.Tweet) []types.Tweets {
 	return content
 }
 
+func graphTimelineInstructions(js gjson.Result) gjson.Result {
+	return sel(
+		get(js, "data.list.timeline_response.timeline.instructions"),
+		get(js, "data.user.result.timeline.timeline.instructions"),
+		get(js, "data.user_result.result.timeline_response.timeline.instructions"),
+	)
+}
+
+// HasGraphTimelineInstructions recognizes the timeline response even when it
+// contains an empty array of instructions.
+func HasGraphTimelineInstructions(js gjson.Result) bool {
+	return graphTimelineInstructions(js).IsArray()
+}
+
 func ParseGraphTimeline(js gjson.Result, after string) types.Profile {
 	result := types.Profile{
 		User:        emptyUser(),
@@ -1286,16 +1300,7 @@ func ParseGraphTimeline(js gjson.Result, after string) types.Profile {
 		AccountInfo: types.AccountInfo{VerifiedType: types.VerifiedNone},
 	}
 
-	instructions := sel(
-		get(js, "data.list.timeline_response.timeline.instructions"),
-		get(js, "data.user.result.timeline.timeline.instructions"),
-		get(js, "data.user_result.result.timeline_response.timeline.instructions"),
-	)
-	if length(instructions) == 0 {
-		return result
-	}
-
-	for _, i := range arr(instructions) {
+	for _, i := range arr(graphTimelineInstructions(js)) {
 		if moduleItems := get(i, "moduleItems"); notNull(moduleItems) {
 			result.Tweets.Content = addSingles(result.Tweets.Content, extractTweetsFromModuleItems(moduleItems))
 			continue

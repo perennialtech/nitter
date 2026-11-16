@@ -95,6 +95,9 @@ search, followers and reposters from the public
 sessions from `sessions.jsonl`; without that file only the FxTwitter-backed
 pages work. To create it, follow the upstream
 [session token guide](https://github.com/zedeus/nitter/wiki/Creating-session-tokens).
+Set `"suspended": true` on a session to keep it available for profile requests
+and exclude it from search. Remove the field or set it to `false` when the
+account recovers, then restart Nitter to reload the file.
 For guest mode, see `guestAuth` in [nitter.example.conf](nitter.example.conf).
 
 First create your config file. The Docker commands mount it into the container,

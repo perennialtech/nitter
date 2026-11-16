@@ -6,12 +6,22 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/tidwall/gjson"
+
+	"github.com/perennialtech/nitter/internal/api"
+	"github.com/perennialtech/nitter/internal/auth"
+	"github.com/perennialtech/nitter/internal/config"
 	"github.com/perennialtech/nitter/internal/types"
 )
 
@@ -59,6 +69,81 @@ func TestZeroTTLIsNotCached(t *testing.T) {
 	if n := calls.Load(); n != 2 {
 		t.Fatalf("fetched %d times, want 2", n)
 	}
+}
+
+func TestUserTweetsCache(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		vars := gjson.Parse(r.URL.Query().Get("variables"))
+		switch vars.Get("cursor").String() {
+		case "empty":
+			fmt.Fprint(w, `{"data":{"user":{"result":{"timeline":{"timeline":{"instructions":[]}}}}}}`)
+		case "invalid":
+			fmt.Fprint(w, `{"data":{"user":{"result":{}}}}`)
+		default:
+			operation := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
+			bottom := vars.Get("userId").String() + "/" + operation + "/" + vars.Get("cursor").String()
+			fmt.Fprintf(w, `{"data":{"user":{"result":{"timeline":{"timeline":{"instructions":[{"type":"TimelineAddEntries","entries":[{"entryId":"cursor-bottom-1","content":{"value":%q}}]}]}}}}}}`, bottom)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	cfg := &config.Config{APIProxy: upstream.URL, DisableTid: true, MaxRetries: 1, CacheMaxMB: 1}
+	path := filepath.Join(t.TempDir(), "sessions.jsonl")
+	if err := os.WriteFile(path, []byte(`{"kind":"cookie","auth_token":"fixture","ct0":"fixture"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.Init(cfg, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Init(cfg, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { api.Init(&config.Config{}, "") })
+
+	for _, enabled := range []bool{false, true} {
+		if enabled {
+			cfg.UserTweetsCacheTime = 5
+		}
+		Init(cfg)
+		c := entries
+		t.Cleanup(func() { c.StopAllGoroutines() })
+		before := calls.Load()
+		for _, tc := range []struct {
+			id, cursor string
+			kind       types.TimelineKind
+			bottom     string
+		}{
+			{"123", "", types.TimelineTweets, "123/UserOriginalsTimeline/"},
+			{"456", "", types.TimelineTweets, "456/UserOriginalsTimeline/"},
+			{"123", "other+/_=", types.TimelineTweets, "123/UserOriginalsTimeline/other+/_="},
+			{"123", "", types.TimelineReplies, "123/UserRepliesTimeline/"},
+			{"123", "empty", types.TimelineTweets, ""},
+			{"123", "invalid", types.TimelineTweets, ""},
+		} {
+			for range 2 {
+				p, err := UserTweets(t.Context(), tc.id, tc.kind, tc.cursor, false)
+				if tc.cursor == "invalid" {
+					if !errors.Is(err, types.ErrRateLimited) {
+						t.Fatalf("incomplete timeline error = %v, want ErrRateLimited", err)
+					}
+					continue
+				}
+				if err != nil || p.Tweets.Bottom != tc.bottom || p.Tweets.Beginning != (tc.cursor == "") {
+					t.Fatalf("timeline %s %q = %+v, %v", tc.id, tc.cursor, p.Tweets, err)
+				}
+			}
+		}
+		want := int32(12)
+		if enabled {
+			want = 8 // four pages cached, two empty or invalid results refetched
+		}
+		if got := calls.Load() - before; got != want {
+			t.Fatalf("cache enabled %v: %d upstream requests, want %d", enabled, got, want)
+		}
+	}
+	t.Cleanup(func() { userTweetsCacheTime = 0 })
 }
 
 func TestEvictsToTheCap(t *testing.T) {

@@ -54,6 +54,7 @@ type Session struct {
 
 	GuestToken string
 
+	suspended bool
 	pending   int
 	limited   bool
 	limitedAt int64
@@ -70,10 +71,11 @@ func NewGuestSession(token string) *Session {
 }
 
 // Req names the endpoint a request uses for each session kind, which is what
-// rate limits are tracked by.
+// rate limits are tracked by. Search requests require a non-suspended account.
 type Req struct {
 	OAuth  string
 	Cookie string
+	Search bool
 }
 
 // Endpoint is the endpoint req uses with s.
@@ -126,6 +128,7 @@ func ParseSession(line string) (*Session, error) {
 		kind = "oauth"
 	}
 	username := field(js, "username", "username")
+	suspended := strings.EqualFold(js.Get("suspended").String(), "true")
 
 	switch kind {
 	case "oauth":
@@ -144,6 +147,7 @@ func ParseSession(line string) (*Session, error) {
 			Username:    username,
 			OAuthToken:  token,
 			OAuthSecret: field(js, "oauthTokenSecret", "oauth_token_secret"),
+			suspended:   suspended,
 		}, nil
 	case "cookie":
 		var id int64
@@ -159,6 +163,7 @@ func ParseSession(line string) (*Session, error) {
 			Username:  username,
 			AuthToken: field(js, "authToken", "auth_token"),
 			Ct0:       field(js, "ct0", "ct0"),
+			suspended: suspended,
 		}, nil
 	}
 	return nil, fmt.Errorf("unknown session kind: %s", kind)

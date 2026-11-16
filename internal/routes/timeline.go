@@ -105,19 +105,30 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 		after = ""
 	}
 
+	user, err := cache.User(ctx, name, true)
+	if err != nil {
+		return types.Profile{}, err
+	}
+	info, err := cache.AccountInfo(ctx, name, false)
+	if err != nil {
+		return types.Profile{}, err
+	}
+	if user.Protected || user.Suspended {
+		return types.Profile{
+			User:        user,
+			Tweets:      types.Timeline{Query: q, Beginning: after == ""},
+			AccountInfo: info,
+		}, nil
+	}
+
 	var (
 		g       group
 		profile types.Profile
-		user    types.User
 		rail    types.PhotoRail
-		info    types.AccountInfo
 	)
 	if !skipRail && q.Kind != types.QueryMedia {
 		g.go_(func() (err error) { rail, err = cache.PhotoRail(ctx, userID); return })
 	}
-	g.go_(func() (err error) { user, err = cache.User(ctx, name, true); return })
-	g.go_(func() (err error) { info, err = cache.AccountInfo(ctx, name, false); return })
-
 	useGuestSearch := flags.GuestAuth && !rss
 	search := func(q types.Query) (types.Profile, error) {
 		tl, err := api.GraphTweetSearch(ctx, q, after)
@@ -128,36 +139,39 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 		if useGuestSearch && p.GuestSearchFallback {
 			profile, err = search(q)
 		} else {
-			profile, err = api.GraphUserTweets(ctx, userID, types.TimelineTweets, after, rss)
+			profile, err = cache.UserTweets(ctx, userID, types.TimelineTweets, after, rss)
 		}
 	case types.QueryReplies:
 		if useGuestSearch {
 			profile, err = search(q)
 		} else {
-			profile, err = api.GraphUserTweets(ctx, userID, types.TimelineReplies, after, rss)
+			profile, err = cache.UserTweets(ctx, userID, types.TimelineReplies, after, rss)
 		}
 	case types.QueryMedia:
-		profile, err = api.GraphUserTweets(ctx, userID, types.TimelineMedia, after, false)
+		profile, err = cache.UserTweets(ctx, userID, types.TimelineMedia, after, false)
 	case types.QueryArticles:
 		if flags.GuestAuth {
 			profile, err = search(types.Query{Kind: types.QueryPosts, FromUser: q.FromUser,
 				Text: "url:x.com/i/article/"})
 		} else {
-			profile, err = api.GraphUserTweets(ctx, userID, types.TimelineArticles, after, false)
+			profile, err = cache.UserTweets(ctx, userID, types.TimelineArticles, after, false)
 		}
 	case types.QueryReposts:
-		profile, err = api.GraphUserTweets(ctx, userID, types.TimelineReposts, after, false)
+		profile, err = cache.UserTweets(ctx, userID, types.TimelineReposts, after, false)
 	default:
 		profile, err = search(q)
 	}
-	if gerr := g.wait(); err == nil {
+	if gerr := g.wait(); err == nil && !profile.User.Protected {
 		err = gerr
 	}
 	if err != nil {
 		return types.Profile{}, err
 	}
+	user.Protected = profile.User.Protected
 	profile.User = user
-	profile.PhotoRail = rail
+	if !user.Protected {
+		profile.PhotoRail = rail
+	}
 	profile.AccountInfo = info
 	profile.Tweets.Query = q
 	return profile, nil
