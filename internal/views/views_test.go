@@ -331,6 +331,12 @@ func TestAttachmentDimensions(t *testing.T) {
 			}
 		}
 	}
+	mixed := parse(t, renderMedia([]types.Media{tw.Media[0], tw.Media[2]}, &p, "/", true))
+	requireSel(t, mixed, `.mixed-row[style*="aspect-ratio: 2 / 1.77777778"]`)
+	unknown := parse(t, renderMedia([]types.Media{tw.Media[1], tw.Media[2]}, &p, "/", true))
+	if len(queryAll(unknown, `.mixed-row[style*="aspect-ratio"]`)) != 0 {
+		t.Error("mixed row reserves unknown media dimensions")
+	}
 }
 
 func TestRetweetAndUnavailable(t *testing.T) {
