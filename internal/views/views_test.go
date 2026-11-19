@@ -481,6 +481,15 @@ func TestTimelineSelectors(t *testing.T) {
 	tl.Content = []types.Tweets{{{ID: 1, Available: true}}}
 	requireSel(t, parse(t, RenderTweetSearch(tl, &p, "/search", nil)),
 		".timeline.media-gallery-view .gallery-masonry", ".timeline-container.media-only")
+
+	tl.Query = types.Query{Kind: types.QueryMedia, View: "broadcasts", Text: "launch"}
+	tl.Query.FromUser = []string{"alice"}
+	requireSel(t, parse(t, RenderTweetSearch(tl, &p, "/alice/search", nil)),
+		`.search-field[action="/alice/search"]`,
+		`.search-field input[name="view"][value="broadcasts"]`,
+		`.media-view-tabs .active a[href="?view=broadcasts&f=media&q=launch"]`,
+		`.media-view-tabs a[href="?view=spaces&f=media&q=launch"]`,
+		`.show-more a[href="?view=broadcasts&f=media&q=launch&cursor=abc"]`)
 }
 
 func TestPages(t *testing.T) {

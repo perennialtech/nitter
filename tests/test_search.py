@@ -114,7 +114,7 @@ class SearchProductTest(BaseTestCase):
         self.open_nitter('search?f=media&q=nasa')
         tabs = self.find_elements('.media-view-tabs .tab-item')
         labels = [t.text.strip() for t in tabs]
-        self.assert_equal(labels, ['Timeline', 'Grid', 'Gallery'])
+        self.assert_equal(labels, ['Timeline', 'Grid', 'Gallery', 'Spaces', 'Broadcasts'])
 
     def test_media_view_grid(self):
         self.open_nitter('search?f=media&q=nasa&view=grid')

@@ -62,8 +62,8 @@ func (s *Server) searchRoutes() {
 			sq.Kind = types.QueryLists
 		}
 		// media searches support view modes, defaulting like /user/media
-		if sq.Kind == types.QueryMedia && sq.View != "timeline" && sq.View != "grid" && sq.View != "gallery" {
-			sq.View = strings.ToLower(p.MediaView)
+		if sq.Kind == types.QueryMedia {
+			sq.View = c.mediaView(p)
 		}
 
 		switch sq.Kind {

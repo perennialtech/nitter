@@ -230,6 +230,8 @@ type Query struct {
 	Until    string
 	MinLikes string
 	Sep      string
+	// ProfileMedia distinguishes /user/media from /user/search?f=media.
+	ProfileMedia bool
 }
 
 type Gif struct {

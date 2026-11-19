@@ -651,7 +651,7 @@ func GraphTweetSearch(ctx context.Context, q types.Query, after string) (types.T
 	case q.Kind == types.QueryTop:
 		product = "Top"
 	// profile media feeds (RSS, multi-user timelines) must stay chronological
-	case q.Kind == types.QueryMedia && len(q.FromUser) == 0:
+	case q.Kind == types.QueryMedia && !q.ProfileMedia && query.MediaLinkTerm(q) == "":
 		product = "Media"
 	default:
 		product = "Latest"

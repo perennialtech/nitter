@@ -105,6 +105,21 @@
   }
 }
 
+@media (max-width: 600px) {
+  .media-view-tabs {
+    gap: 2px;
+
+    .tab-item {
+      flex: 1 1 auto;
+
+      a {
+        padding: 8px 2px;
+        font-size: 14px;
+      }
+    }
+  }
+}
+
 .timeline-footer {
   background-color: var(--bg_panel);
   padding: 6px 0;

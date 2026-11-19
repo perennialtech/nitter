@@ -22,6 +22,16 @@ var ValidFilters = []string{
 
 const EmptyQuery = "include:nativeretweets"
 
+var MediaViews = []string{"timeline", "grid", "gallery", "spaces", "broadcasts"}
+
+// MediaLinkTerm returns the search operator for media views that list shared links.
+func MediaLinkTerm(q types.Query) string {
+	if q.Kind == types.QueryMedia && (q.View == "spaces" || q.View == "broadcasts") {
+		return "url:/i/" + q.View + "/"
+	}
+	return ""
+}
+
 // Init parses search parameters. name is the comma-separated list of users
 // the search is restricted to, if any.
 func Init(params url.Values, name string) types.Query {
@@ -55,13 +65,18 @@ func Init(params url.Values, name string) types.Query {
 	return q
 }
 
-func Media(name string) types.Query {
-	return types.Query{
-		Kind:     types.QueryMedia,
-		Filters:  []string{"twimg", "native_video"},
-		FromUser: []string{name},
-		Sep:      "OR",
+func Media(name, view string) types.Query {
+	q := types.Query{
+		Kind:         types.QueryMedia,
+		FromUser:     []string{name},
+		View:         view,
+		ProfileMedia: true,
 	}
+	if MediaLinkTerm(q) == "" {
+		q.Filters = []string{"twimg", "native_video"}
+		q.Sep = "OR"
+	}
+	return q
 }
 
 func Articles(name string) types.Query {
@@ -96,7 +111,9 @@ func Param(q types.Query, maxID string) string {
 		}
 	}
 
-	if len(q.FromUser) > 0 && (q.Kind == types.QueryPosts || q.Kind == types.QueryMedia) {
+	if term := MediaLinkTerm(q); term != "" {
+		param += " " + term
+	} else if len(q.FromUser) > 0 && (q.Kind == types.QueryPosts || q.ProfileMedia) {
 		param += " (filter:self_threads OR -filter:replies)"
 	}
 
@@ -158,7 +175,7 @@ func URL(q types.Query) string {
 	switch {
 	case q.Kind == types.QueryTweets, q.Kind == types.QueryUsers, q.Kind == types.QueryLists,
 		q.Kind == types.QueryCommunitySearch, q.Kind == types.QueryCommunities, q.Kind == types.QueryCommunitiesLatest,
-		q.Kind == types.QueryTop, q.Kind == types.QueryMedia && len(q.FromUser) == 0:
+		q.Kind == types.QueryTop, q.Kind == types.QueryMedia && !q.ProfileMedia:
 		params = append(params, "f="+string(q.Kind))
 		if q.Text != "" {
 			params = append(params, "q="+utils.EncodeURL(q.Text))

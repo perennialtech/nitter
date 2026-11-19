@@ -37,7 +37,14 @@ func tabRssEnabled(cfg *config.Config, tab string) bool {
 	return false
 }
 
-func (c *ctx) timelineQuery(tab, name string, p *prefs.Prefs) types.Query {
+func (c *ctx) mediaView(p *prefs.Prefs) string {
+	if v := c.query.Get("view"); slices.Contains(query.MediaViews, v) {
+		return v
+	}
+	return strings.ToLower(p.MediaView)
+}
+
+func (c *ctx) timelineQuery(tab, name, mediaView string) types.Query {
 	switch tab {
 	case "with_replies":
 		return query.Replies(name)
@@ -46,15 +53,13 @@ func (c *ctx) timelineQuery(tab, name string, p *prefs.Prefs) types.Query {
 	case "reposts":
 		return query.Reposts(name)
 	case "media":
-		q := query.Media(name)
-		if v := c.query.Get("view"); v == "timeline" || v == "grid" || v == "gallery" {
-			q.View = v
-		} else {
-			q.View = strings.ToLower(p.MediaView)
+		return query.Media(name, mediaView)
+	case "search":
+		q := query.Init(c.query, name)
+		if q.Kind == types.QueryMedia && mediaView != "" {
+			q.View = mediaView
 		}
 		return q
-	case "search":
-		return query.Init(c.query, name)
 	}
 	return types.Query{Kind: types.QueryPosts, FromUser: []string{name}}
 }
@@ -148,7 +153,11 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 			profile, err = cache.UserTweets(ctx, userID, types.TimelineReplies, after, rss)
 		}
 	case types.QueryMedia:
-		profile, err = cache.UserTweets(ctx, userID, types.TimelineMedia, after, false)
+		if !q.ProfileMedia || query.MediaLinkTerm(q) != "" {
+			profile, err = search(q)
+		} else {
+			profile, err = cache.UserTweets(ctx, userID, types.TimelineMedia, after, false)
+		}
 	case types.QueryArticles:
 		if flags.GuestAuth {
 			profile, err = search(types.Query{Kind: types.QueryPosts, FromUser: q.FromUser,
@@ -312,7 +321,7 @@ func (s *Server) timelineRoutes() {
 		p := c.prefs()
 		after := c.cursor()
 		users := names(name)
-		q := c.timelineQuery(tab, name, p)
+		q := c.timelineQuery(tab, name, c.mediaView(p))
 		if len(users) != 1 {
 			q.FromUser = users
 		}

@@ -57,17 +57,15 @@ func mediaViewURL(q types.Query, view string) string {
 	return "?" + query.URL(q)
 }
 
-// RenderMediaViewTabs renders the timeline/grid/gallery switch.
+// RenderMediaViewTabs renders the view selector for media search and profile media.
 func RenderMediaViewTabs(q types.Query) template.HTML {
 	current := q.View
 	if current == "" {
 		current = "timeline"
 	}
 	var tabs []tab
-	for _, v := range []struct{ View, Text string }{
-		{"timeline", "Timeline"}, {"grid", "Grid"}, {"gallery", "Gallery"},
-	} {
-		tabs = append(tabs, tab{activeTab(current == v.View), mediaViewURL(q, v.View), v.Text})
+	for _, view := range query.MediaViews {
+		tabs = append(tabs, tab{activeTab(current == view), mediaViewURL(q, view), capitalize(view)})
 	}
 	return exec("tabs", map[string]any{"Class": "tab media-view-tabs", "Tabs": tabs})
 }
@@ -170,7 +168,7 @@ func RenderTweetSearch(results types.Timeline, p *prefs.Prefs, path string, pinn
 			parts = append(parts, RenderMediaViewTabs(q))
 		}
 	}
-	if len(q.FromUser) == 0 || q.Kind == types.QueryTweets {
+	if len(q.FromUser) == 0 || q.Kind == types.QueryTweets || q.Kind == types.QueryMedia && !q.ProfileMedia {
 		parts = append(parts, exec("timelineHeader", RenderSearchPanel(q)))
 	}
 	if len(q.FromUser) == 0 {
