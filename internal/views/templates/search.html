@@ -21,6 +21,7 @@
 {{- define "searchPanel" -}}
 <form method="get" action="{{url .Action}}" class="search-field" autocomplete="off">
   {{- hiddenField "f" .Kind}}
+  {{- if and (eq .Kind "media") .Q.View}}{{hiddenField "view" .Q.View}}{{end}}
   {{- genInput "q" "" .Q.Text "Enter search..." "pref-inline" true}}
   <button type="submit">{{icon "search"}}</button>
   <input id="search-panel-toggle" type="checkbox"{{if .Open}} checked=""{{end}}>

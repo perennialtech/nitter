@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"github.com/perennialtech/nitter/internal/flags"
+	"github.com/perennialtech/nitter/internal/query"
 	"github.com/perennialtech/nitter/internal/types"
 )
 
@@ -255,6 +256,50 @@ func TestTweetSearchEmptyQuery(t *testing.T) {
 	}
 	if !tl.Beginning {
 		t.Fatalf("an empty search returns the first, empty page: %+v", tl)
+	}
+}
+
+func TestMediaSearchRequests(t *testing.T) {
+	addCookieSessions(t, 1)
+	for _, tt := range []struct {
+		name, product, rawQuery string
+		q                       types.Query
+	}{
+		{"spaces without keywords", "Latest", "url:/i/spaces/ include:nativeretweets",
+			types.Query{Kind: types.QueryMedia, View: "spaces"}},
+		{"broadcasts with filters", "Latest", "url:/i/broadcasts/ include:nativeretweets (-filter:replies) launch",
+			types.Query{Kind: types.QueryMedia, View: "broadcasts", Text: "launch", Excludes: []string{"replies"}}},
+		{"profile broadcasts", "Latest", "(from:alice) url:/i/broadcasts/ include:nativeretweets",
+			query.Media("alice", "broadcasts")},
+		{"ordinary media", "Media", "include:nativeretweets launch",
+			types.Query{Kind: types.QueryMedia, View: "grid", Text: "launch"}},
+		{"author media search", "Media", "(from:alice) include:nativeretweets launch",
+			types.Query{Kind: types.QueryMedia, FromUser: []string{"alice"}, View: "grid", Text: "launch"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls atomic.Int32
+			fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				params := r.URL.Query()
+				if r.Host == "api.fxtwitter.com" {
+					if params.Get("q") != tt.rawQuery || params.Get("feed") != strings.ToLower(tt.product) || params.Get("cursor") != "page2" {
+						t.Errorf("unexpected FxTwitter search: %v", params)
+					}
+					w.WriteHeader(http.StatusBadGateway) // exercise the session fallback
+					return
+				}
+				vars := gjson.Parse(params.Get("variables"))
+				if !strings.HasSuffix(r.URL.Path, "/SearchTimeline") || vars.Get("rawQuery").String() != tt.rawQuery ||
+					vars.Get("product").String() != tt.product || vars.Get("cursor").String() != "page2" {
+					t.Errorf("unexpected fallback search: %s %s", r.URL.Path, vars.Raw)
+				}
+				w.Write([]byte(`{"data":{}}`))
+			})
+			tl, err := GraphTweetSearch(context.Background(), tt.q, "page2")
+			if err != nil || calls.Load() != 2 || tl.Query.View != tt.q.View {
+				t.Fatalf("calls = %d, view = %q, err = %v", calls.Load(), tl.Query.View, err)
+			}
+		})
 	}
 }
 

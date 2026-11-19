@@ -6,12 +6,28 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/perennialtech/nitter/internal/cache"
 	"github.com/perennialtech/nitter/internal/config"
+	"github.com/perennialtech/nitter/internal/query"
 	"github.com/perennialtech/nitter/internal/types"
 )
+
+func TestProfileMediaFeedQueries(t *testing.T) {
+	for _, keyword := range []string{"launch", "election"} {
+		c := ctx{query: url.Values{"f": {"media"}, "view": {"spaces"}, "q": {keyword}}}
+		search := c.timelineQuery("search", "alice", "")
+		if got, want := query.URL(search), "view=spaces&f=media&q="+keyword; got != want {
+			t.Errorf("profile search RSS cache input = %q, want %q", got, want)
+		}
+		media := c.timelineQuery("media", "alice", "")
+		if got, want := query.Param(media, ""), "(from:alice) (filter:self_threads OR -filter:replies) include:nativeretweets (filter:twimg OR filter:native_video)"; got != want {
+			t.Errorf("profile media RSS query = %q, want %q", got, want)
+		}
+	}
+}
 
 func TestCommunityNotesRssCacheVariants(t *testing.T) {
 	cfg := &config.Config{

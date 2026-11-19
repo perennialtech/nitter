@@ -189,7 +189,8 @@ func (s *Server) rssRoutes() {
 		if !tabRssEnabled(s.cfg, tab) {
 			return disabled(c)
 		}
-		q := c.timelineQuery(tab, name, c.prefs())
+		// The profile media feed always contains ordinary media, regardless of the web view.
+		q := c.timelineQuery(tab, name, "")
 		searchKey := ""
 		if tab == "search" {
 			searchKey = ":" + hashString(query.URL(q))
