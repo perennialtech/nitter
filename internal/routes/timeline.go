@@ -3,6 +3,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -90,8 +91,45 @@ func (g *group) wait() error {
 	return g.err
 }
 
+func searchTweets(ctx context.Context, q types.Query, after string) (types.Timeline, error) {
+	names := append([]string(nil), q.FromUser...)
+	for _, name := range query.ParseFromUsers(q.Text, cache.MaxMultiUsers) {
+		if len(names) >= cache.MaxMultiUsers {
+			break
+		}
+		if !slices.ContainsFunc(names, func(existing string) bool { return strings.EqualFold(existing, name) }) {
+			names = append(names, name)
+		}
+	}
+
+	if rest, ok := strings.CutPrefix(after, cache.MultiUserCursorPrefix); ok && len(names) > 0 {
+		tl, err := cache.MultiUserTimeline(ctx, q, names, cache.TimelineKindFor(q), rest)
+		if err != nil {
+			return types.Timeline{}, err
+		}
+		tl.Query.Text = q.Text
+		if tl.Bottom != "" {
+			tl.Bottom = cache.MultiUserCursorPrefix + tl.Bottom
+		}
+		return tl, nil
+	}
+
+	tl, err := api.GraphTweetSearch(ctx, q, after)
+	if err != nil && (errors.Is(err, types.ErrNoSessions) || errors.Is(err, types.ErrRateLimited)) && len(names) > 0 {
+		fb, ferr := cache.MultiUserTimeline(ctx, q, names, cache.TimelineKindFor(q), "")
+		if ferr == nil {
+			fb.Query.Text = q.Text
+			if fb.Bottom != "" {
+				fb.Bottom = cache.MultiUserCursorPrefix + fb.Bottom
+			}
+			return fb, nil
+		}
+	}
+	return tl, err
+}
+
 func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Prefs,
-	skipRail, rss bool) (types.Profile, error) {
+	skipRail, rss, emptyTweets bool) (types.Profile, error) {
 	name := q.FromUser[0]
 	userID, err := cache.UserID(ctx, name)
 	if err != nil {
@@ -136,7 +174,7 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 	}
 	useGuestSearch := flags.GuestAuth && !rss
 	search := func(q types.Query) (types.Profile, error) {
-		tl, err := api.GraphTweetSearch(ctx, q, after)
+		tl, err := searchTweets(ctx, q, after)
 		return types.Profile{Tweets: tl}, err
 	}
 	switch q.Kind {
@@ -156,7 +194,7 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 		if !q.ProfileMedia || query.MediaLinkTerm(q) != "" {
 			profile, err = search(q)
 		} else {
-			profile, err = cache.UserTweets(ctx, userID, types.TimelineMedia, after, false)
+			profile, err = cache.UserMediaTimeline(ctx, userID, name, q, after)
 		}
 	case types.QueryArticles:
 		if flags.GuestAuth {
@@ -168,7 +206,11 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 	case types.QueryReposts:
 		profile, err = cache.UserTweets(ctx, userID, types.TimelineReposts, after, false)
 	default:
-		profile, err = search(q)
+		if emptyTweets {
+			profile = types.Profile{Tweets: types.Timeline{Beginning: after == "", Query: q}}
+		} else {
+			profile, err = search(q)
+		}
 	}
 	if gerr := g.wait(); err == nil && !profile.User.Protected {
 		err = gerr
@@ -188,18 +230,26 @@ func fetchProfile(ctx context.Context, after string, q types.Query, p *prefs.Pre
 
 // showTimeline renders a profile, or a combined timeline for several
 // users. It returns "" when the user doesn't exist.
-func (c *ctx) showTimeline(q types.Query, rss, after string) (string, error) {
+func (c *ctx) showTimeline(q types.Query, rss, after string, emptyTweets bool) (string, error) {
 	p := c.prefs()
 	if len(q.FromUser) != 1 {
-		tl, err := api.GraphTweetSearch(c.r.Context(), q, after)
-		if err != nil {
-			return "", err
+		var (
+			tl  types.Timeline
+			err error
+		)
+		if emptyTweets {
+			tl = types.Timeline{Beginning: after == "", Query: q}
+		} else {
+			tl, err = searchTweets(c.r.Context(), q, after)
+			if err != nil {
+				return "", err
+			}
 		}
 		html := views.RenderTweetSearch(tl, p, c.fullPath(), nil)
 		return views.RenderMain(html, c.r, c.s.cfg, p, views.PageOpts{TitleText: "Multi", RSS: rss}), nil
 	}
 
-	profile, err := fetchProfile(c.r.Context(), after, q, p, false, false)
+	profile, err := fetchProfile(c.r.Context(), after, q, p, false, false, emptyTweets)
 	if err != nil {
 		return "", err
 	}
@@ -329,22 +379,28 @@ func (s *Server) timelineRoutes() {
 		// used by infinite scroll
 		if c.query.Get("scroll") != "" {
 			if len(q.FromUser) != 1 {
-				tl, err := api.GraphTweetSearch(c.r.Context(), q, after)
+				tl, err := searchTweets(c.r.Context(), q, after)
 				if err != nil {
 					return err
 				}
 				if len(tl.Content) == 0 {
-					return c.status(http.StatusNoContent)
+					if tl.Bottom == "" {
+						return c.status(http.StatusNoContent)
+					}
+					return c.html(http.StatusOK, string(views.RenderMore(tl.Query, tl.Bottom, "", "")))
 				}
 				tl.Beginning = true
 				return c.html(http.StatusOK, string(views.RenderTweetSearch(tl, p, c.fullPath(), nil)))
 			}
-			profile, err := fetchProfile(c.r.Context(), after, q, p, true, false)
+			profile, err := fetchProfile(c.r.Context(), after, q, p, true, false, false)
 			if err != nil {
 				return err
 			}
 			if len(profile.Tweets.Content) == 0 {
-				return c.status(http.StatusNoContent)
+				if profile.Tweets.Bottom == "" {
+					return c.status(http.StatusNoContent)
+				}
+				return c.html(http.StatusOK, string(views.RenderMore(profile.Tweets.Query, profile.Tweets.Bottom, "", "")))
 			}
 			profile.Tweets.Beginning = true
 			return c.html(http.StatusOK, string(views.RenderTimelineTweets(profile.Tweets, p, c.fullPath(), nil)))
@@ -361,7 +417,8 @@ func (s *Server) timelineRoutes() {
 			rss = "/" + name + "/" + tab + "/rss"
 		}
 
-		html, err := c.showTimeline(q, rss, after)
+		emptyTweets := tab == "search" && after == "" && !query.HasSearchInput(q)
+		html, err := c.showTimeline(q, rss, after, emptyTweets)
 		if err != nil {
 			return err
 		}

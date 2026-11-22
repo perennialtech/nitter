@@ -475,7 +475,10 @@ func TestTimelineSelectors(t *testing.T) {
 	tl.Content = nil
 	requireSel(t, parse(t, RenderTimelineTweets(tl, &p, "/search", nil)), ".timeline-end")
 	tl.Beginning = true
+	requireSel(t, parse(t, RenderTimelineTweets(tl, &p, "/search", nil)), `.show-more a[href="?f=tweets&q=nasa&cursor=abc"]`)
+	tl.Bottom = ""
 	requireSel(t, parse(t, RenderTimelineTweets(tl, &p, "/search", nil)), ".timeline-none")
+	tl.Bottom = "abc"
 
 	tl.Query = types.Query{Kind: types.QueryMedia, View: "gallery"}
 	tl.Content = []types.Tweets{{{ID: 1, Available: true}}}
@@ -933,4 +936,28 @@ func TestHelpers(t *testing.T) {
 	if got := xmlEscape(`<a href="x">'&`); got != "&lt;a href=&quot;x&quot;&gt;&apos;&amp;" {
 		t.Errorf("xmlEscape = %q", got)
 	}
+}
+
+func TestBlankSearchAndTerminalFooter(t *testing.T) {
+	p := prefs.Defaults
+	blank := types.Timeline{Beginning: true, Query: types.Query{Kind: types.QueryTweets, FromUser: []string{"alice"}}}
+	if html := string(RenderTweetSearch(blank, &p, "/alice/search", nil)); strings.Contains(html, "timeline-none") {
+		t.Fatalf("blank profile search should not render No items found:\n%s", html)
+	}
+	blankUsers := types.UsersTimeline{Beginning: true, Query: types.Query{Kind: types.QueryUsers}}
+	if html := string(RenderUserSearch(blankUsers, &p)); strings.Contains(html, "timeline-none") {
+		t.Fatalf("blank user search should not render No items found:\n%s", html)
+	}
+	blankLists := types.Result[types.ListSearchResult]{Beginning: true, Query: types.Query{Kind: types.QueryLists}}
+	if html := string(RenderListSearch(blankLists, &p, "/search")); strings.Contains(html, "timeline-none") {
+		t.Fatalf("blank list search should not render No items found:\n%s", html)
+	}
+
+	terminal := types.Timeline{
+		Beginning: true,
+		Query:     types.Query{Kind: types.QueryTweets, Text: "go"},
+		Content:   []types.Tweets{{{ID: 1, Available: true, User: types.User{Username: "a"}}}},
+	}
+	doc := parse(t, RenderTimelineTweets(terminal, &p, "/search", nil))
+	requireSel(t, doc, ".timeline-footer .timeline-end")
 }

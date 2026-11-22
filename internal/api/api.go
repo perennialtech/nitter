@@ -751,24 +751,42 @@ func PhotoRail(ctx context.Context, id string) (types.PhotoRail, error) {
 	if id == "" {
 		return nil, nil
 	}
+	var rail types.PhotoRail
 	media, err := fxUserTimeline(ctx, id, "media", 16, "")
 	if !fxFailed(err) {
 		if err != nil {
 			return nil, err
 		}
-		var rail types.PhotoRail
 		for _, thread := range media.Content {
 			if photo := parser.ExtractGalleryPhoto(thread[0]); photo.URL != "" {
 				rail = append(rail, photo)
 			}
 		}
-		return rail, nil
+	} else {
+		js, err := fetch(ctx, mediaURL(id, ""))
+		if err != nil {
+			return nil, err
+		}
+		rail = parser.ParseGraphPhotoRail(js)
 	}
-	js, err := fetch(ctx, mediaURL(id, ""))
-	if err != nil {
-		return nil, err
+	if len(rail) < 16 {
+		if profile, err := GraphUserTweets(ctx, id, types.TimelineTweets, "", false); err == nil {
+			seen := make(map[string]struct{}, len(rail))
+			for _, p := range rail {
+				seen[p.TweetID] = struct{}{}
+			}
+			for _, photo := range parser.ParseGraphPhotoRailFromTweets(profile.Tweets.Content) {
+				if len(rail) >= 16 {
+					break
+				}
+				if _, ok := seen[photo.TweetID]; !ok {
+					seen[photo.TweetID] = struct{}{}
+					rail = append(rail, photo)
+				}
+			}
+		}
 	}
-	return parser.ParseGraphPhotoRail(js), nil
+	return rail, nil
 }
 
 // GraphArticle fetches the article attached to tweet id.

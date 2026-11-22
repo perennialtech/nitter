@@ -190,6 +190,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const loadedPages = new Set();
   let loading = false;
   let autoLoadFailed = false;
+  let autoFollows = 0;
 
   function scrollURL(href) {
     const url = new URL(href, location.href);
@@ -231,19 +232,27 @@ document.addEventListener("DOMContentLoaded", function () {
         loadedPages.add(url);
         loadMore.remove();
 
+        let added = 0;
         if (masonry) {
           masonry.syncHeights();
           const newMasonry = doc.querySelector(".gallery-masonry");
           if (newMasonry) {
             const knownHrefs = getHrefs(".gallery-masonry .tweet-link");
-            masonry.addAll([...newMasonry.querySelectorAll(".timeline-item")].filter(item => !isDuplicate(item, knownHrefs)));
+            const items = [...newMasonry.querySelectorAll(".timeline-item")].filter(item => !isDuplicate(item, knownHrefs));
+            added = items.length;
+            masonry.addAll(items);
           }
         } else {
           const knownHrefs = getHrefs(`${itemClass} .tweet-link`);
           for (const item of doc.querySelectorAll(itemClass)) {
             if (isDuplicate(item, knownHrefs)) continue;
             isTweet ? container.appendChild(item) : insertBeforeLast(container, item);
+            added++;
           }
+        }
+
+        if (added > 0) {
+          container.querySelector(".timeline-none")?.remove();
         }
 
         loading = false;
@@ -258,7 +267,17 @@ document.addEventListener("DOMContentLoaded", function () {
           if (repeated) {
             isTweet ? pagination.remove() : showTimelineEnd(pagination, masonry);
           } else if (next) {
-            requestAnimationFrame(fillViewport);
+            if (added >= 5) {
+              autoFollows = 0;
+              requestAnimationFrame(fillViewport);
+            } else if (autoFollows < 2) {
+              autoFollows++;
+              setTimeout(() => {
+                if (!loading && !autoLoadFailed) loadPage(next, 0);
+              }, 300);
+            } else {
+              requestAnimationFrame(fillViewport);
+            }
           }
         }
       })
@@ -276,6 +295,16 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   window.addEventListener("scroll", () => handleScroll());
-  window.addEventListener("load", fillViewport);
+  window.addEventListener("load", () => {
+    const initialItems = document.querySelectorAll(itemClass).length;
+    if (getLoadMore(document) && (initialItems < 5 || document.querySelector(".timeline-none"))) {
+      setTimeout(() => {
+        const loadMore = getLoadMore(document);
+        if (loadMore && !loading && !autoLoadFailed) loadPage(loadMore, 0);
+      }, 300);
+      return;
+    }
+    fillViewport();
+  });
 });
 // @license-end

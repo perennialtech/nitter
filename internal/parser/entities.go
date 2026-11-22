@@ -562,11 +562,15 @@ func ExpandGrokTranslation(text string, links []GrokLink) string {
 // ExtractGalleryPhoto picks a tweet's first media thumbnail, or its card
 // image, for the profile photo rail.
 func ExtractGalleryPhoto(t *types.Tweet) types.GalleryPhoto {
+	source := t
+	if len(source.Media) == 0 && source.Retweet != nil {
+		source = source.Retweet
+	}
 	url := ""
-	if len(t.Media) > 0 {
-		url = t.Media[0].Thumb()
-	} else if t.Card != nil {
-		url = t.Card.Image
+	if len(source.Media) > 0 {
+		url = source.Media[0].Thumb()
+	} else if source.Card != nil {
+		url = source.Card.Image
 	}
 	return types.GalleryPhoto{URL: url, TweetID: itoa(t.ID)}
 }

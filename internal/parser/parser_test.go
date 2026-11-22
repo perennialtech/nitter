@@ -5,6 +5,8 @@ package parser
 import (
 	"slices"
 	"testing"
+
+	"github.com/tidwall/gjson"
 	"time"
 
 	"github.com/perennialtech/nitter/internal/types"
@@ -386,5 +388,75 @@ func TestParseGraphCommunityMembers(t *testing.T) {
 		"slice_info":{"next_cursor":"N"}}}}}}`), "")
 	if len(r.Content) != 1 || r.Content[0].Username != "m" || r.Bottom != "N" {
 		t.Errorf("members = %+v", r)
+	}
+}
+
+func TestParseTweetSensitiveAndRetweetMediaFallback(t *testing.T) {
+	raw := `{
+		"__typename": "Tweet",
+		"rest_id": "200",
+		"legacy": {
+			"id_str": "200",
+			"full_text": "RT @bob: pic",
+			"user_id_str": "1",
+			"possibly_sensitive": true,
+			"extended_entities": {
+				"media": [{
+					"type": "photo",
+					"media_url_https": "https://pbs.twimg.com/media/outer.jpg",
+					"sizes": {"large": {"w": 100, "h": 100}}
+				}]
+			},
+			"retweeted_status_result": {
+				"result": {
+					"__typename": "Tweet",
+					"rest_id": "100",
+					"legacy": {
+						"id_str": "100",
+						"full_text": "pic",
+						"user_id_str": "2"
+					}
+				}
+			}
+		}
+	}`
+	tw := ParseGraphTweet(gjson.Parse(raw))
+	if !tw.Sensitive {
+		t.Fatal("expected outer tweet Sensitive=true")
+	}
+	if tw.Retweet == nil {
+		t.Fatal("expected Retweet to be populated")
+	}
+	if !tw.Retweet.Sensitive {
+		t.Fatal("expected outer Sensitive to propagate to Retweet")
+	}
+	if len(tw.Retweet.Media) != 1 || tw.Retweet.Media[0].Photo.URL != "media/outer.jpg" {
+		t.Fatalf("expected retweet media fallback from outer tweet, got %+v", tw.Retweet.Media)
+	}
+	photo := ExtractGalleryPhoto(tw)
+	if photo.TweetID != "200" || photo.URL == "" {
+		t.Fatalf("ExtractGalleryPhoto fallback = %+v", photo)
+	}
+
+	emptyRT := `{
+		"__typename": "Tweet",
+		"rest_id": "201",
+		"legacy": {
+			"id_str": "201",
+			"full_text": "plain",
+			"user_id_str": "1",
+			"retweeted_status_result": {
+				"result": {"rest_id": ""}
+			}
+		}
+	}`
+	tw2 := ParseGraphTweet(gjson.Parse(emptyRT))
+	if tw2.Retweet != nil {
+		t.Fatalf("expected empty retweet payload to be ignored, got %+v", tw2.Retweet)
+	}
+
+	rail := ParseGraphPhotoRailFromTweets([]types.Tweets{{tw}})
+	if len(rail) != 1 || rail[0].TweetID != "200" {
+		t.Fatalf("ParseGraphPhotoRailFromTweets = %+v", rail)
 	}
 }

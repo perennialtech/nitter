@@ -113,7 +113,6 @@
 <div class="{{.Class}}">
   {{- .Newer}}
   {{- .Pinned}}
-  {{- .Footer}}
   {{- if .Gallery}}
   <div class="{{.Gallery}}" data-col-size="{{.ColSize}}">
     {{- range .Items}}{{.}}{{end -}}
@@ -122,6 +121,7 @@
   {{- range .Items}}{{.}}{{end}}
   {{- end}}
   {{- .More}}
+  {{- .Footer}}
   {{- .ToTop -}}
 </div>
 {{- end}}

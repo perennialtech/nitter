@@ -177,7 +177,13 @@ func RenderTweetSearch(results types.Timeline, p *prefs.Prefs, path string, pinn
 			parts = append(parts, RenderMediaViewTabs(q))
 		}
 	}
-	parts = append(parts, RenderTimelineTweets(results, p, path, pinned))
+	blankSearch := !query.HasSearchInput(q) && len(results.Content) == 0 &&
+		(q.Kind == types.QueryTweets || q.Kind == types.QueryTop ||
+			q.Kind == types.QueryUsers || q.Kind == types.QueryLists ||
+			(q.Kind == types.QueryMedia && len(q.FromUser) == 0))
+	if !blankSearch {
+		parts = append(parts, RenderTimelineTweets(results, p, path, pinned))
+	}
 	return exec("container", map[string]any{"Class": containerClass, "Parts": parts})
 }
 
@@ -187,20 +193,26 @@ func renderSearchForm(kind, placeholder, value string) template.HTML {
 
 // RenderUserSearch renders user search results.
 func RenderUserSearch(results types.UsersTimeline, p *prefs.Prefs) template.HTML {
-	return exec("container", map[string]any{"Class": "timeline-container", "Parts": []template.HTML{
+	parts := []template.HTML{
 		exec("timelineHeader", renderSearchForm("users", "Enter username...", results.Query.Text)),
 		RenderSearchTabs(results.Query),
-		RenderTimelineUsers(results, p, ""),
-	}})
+	}
+	if query.HasSearchInput(results.Query) || len(results.Content) > 0 {
+		parts = append(parts, RenderTimelineUsers(results, p, ""))
+	}
+	return exec("container", map[string]any{"Class": "timeline-container", "Parts": parts})
 }
 
 // RenderListSearch renders list search results.
 func RenderListSearch(results types.Result[types.ListSearchResult], p *prefs.Prefs, path string) template.HTML {
-	return exec("container", map[string]any{"Class": "timeline-container", "Parts": []template.HTML{
+	parts := []template.HTML{
 		exec("timelineHeader", renderSearchForm("lists", "Enter search...", results.Query.Text)),
 		RenderSearchTabs(results.Query),
-		RenderTimelineLists(results, p, path),
-	}})
+	}
+	if query.HasSearchInput(results.Query) || len(results.Content) > 0 {
+		parts = append(parts, RenderTimelineLists(results, p, path))
+	}
+	return exec("container", map[string]any{"Class": "timeline-container", "Parts": parts})
 }
 
 func RenderCommunitySearch(q types.Query, results template.HTML) template.HTML {
