@@ -14,7 +14,6 @@ import (
 	"html/template"
 	"io/fs"
 	"net/url"
-	"strconv"
 	"strings"
 	texttemplate "text/template"
 
@@ -117,26 +116,6 @@ func mediumPic(u string, p *prefs.Prefs) string {
 		u += mediumWebp
 	}
 	return utils.MediaPicURL(u, p.DirectMedia)
-}
-
-// insertSep formats n with thousands separators, like Nim's insertSep($n, ',').
-func insertSep(n int) string {
-	s := strconv.Itoa(n)
-	neg := strings.HasPrefix(s, "-")
-	if neg {
-		s = s[1:]
-	}
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(c)
-	}
-	if neg {
-		return "-" + b.String()
-	}
-	return b.String()
 }
 
 // encodeURLNoPlus is Nim's encodeUrl(s, usePlus=false): like

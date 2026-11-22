@@ -104,7 +104,7 @@ func (s *Server) trendsRoutes() {
 			}
 			data.Trends = trends
 		}
-		return c.page(views.RenderTrendsPage(data), views.PageOpts{TitleText: "Trends"})
+		return c.page(views.RenderTrendsPage(data, c.prefs()), views.PageOpts{TitleText: "Trends"})
 	}))
 
 	s.get("/i/trending/?", guard(true, func(c *ctx) error {
@@ -114,7 +114,7 @@ func (s *Server) trendsRoutes() {
 			return err
 		}
 		data := views.TrendsPage{Title: "Trending", Stories: &page, Cursor: cursor}
-		return c.page(views.RenderTrendsPage(data), views.PageOpts{TitleText: "Trending"})
+		return c.page(views.RenderTrendsPage(data, c.prefs()), views.PageOpts{TitleText: "Trending"})
 	}))
 
 	story := func(c *ctx) error {

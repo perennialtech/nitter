@@ -46,7 +46,7 @@ func RenderAboutAccount(info types.AccountInfo, p *prefs.Prefs) template.HTML {
 		d["Affiliate"] = text
 	}
 	if info.UsernameChanges > 0 {
-		label := strconv.Itoa(info.UsernameChanges) + " username change"
+		label := p.Numbers().Int(info.UsernameChanges) + " username change"
 		if info.UsernameChanges > 1 {
 			label += "s"
 		}

@@ -3,6 +3,7 @@
 package views
 
 import (
+	"fmt"
 	"html/template"
 
 	"github.com/perennialtech/nitter/internal/flags"
@@ -21,7 +22,14 @@ func renderPrefs(p *prefs.Prefs, themes []string) template.HTML {
 			}
 			switch pref.Kind {
 			case prefs.Checkbox:
-				out += genCheckbox(pref.Name, pref.Label, p.Bool(pref.Name))
+				label := pref.Label
+				if pref.Name == "abbreviateStats" {
+					const example = 1_200_000
+					numbers := p.Numbers()
+					label = fmt.Sprintf("%s (%s instead of %s)", label,
+						formatStat(example, true, numbers), numbers.Int(example))
+				}
+				out += genCheckbox(pref.Name, label, p.Bool(pref.Name))
 			case prefs.Input:
 				out += genInput(pref.Name, pref.Label, p.String(pref.Name), pref.Placeholder, "", true)
 			case prefs.Select:
@@ -47,22 +55,22 @@ func RenderPreferences(p *prefs.Prefs, path string, themes []string, prefsURL st
 	})
 }
 
-func renderTrendsList(trends []types.Trend) template.HTML {
-	return exec("trendsList", trends)
+func renderTrendsList(trends []types.Trend, p *prefs.Prefs) template.HTML {
+	return exec("trendsList", map[string]any{"Trends": trends, "Numbers": p.Numbers()})
 }
 
 // RenderTrendsTabs renders the two trend location tabs.
-func RenderTrendsTabs(tab1Name string, tab1 []types.Trend, tab2Name string, tab2 []types.Trend) template.HTML {
+func RenderTrendsTabs(tab1Name string, tab1 []types.Trend, tab2Name string, tab2 []types.Trend, p *prefs.Prefs) template.HTML {
 	return exec("trendsTabs", map[string]any{
-		"Tab1Name": tab1Name, "Tab1": renderTrendsList(tab1),
-		"Tab2Name": tab2Name, "Tab2": renderTrendsList(tab2),
+		"Tab1Name": tab1Name, "Tab1": renderTrendsList(tab1, p),
+		"Tab2Name": tab2Name, "Tab2": renderTrendsList(tab2, p),
 	})
 }
 
 // RenderHomeBody renders the home page with search and trends.
 func RenderHomeBody(tab1Name string, tab1 []types.Trend, tab2Name string, tab2 []types.Trend,
-	search template.HTML) template.HTML {
+	search template.HTML, p *prefs.Prefs) template.HTML {
 	return exec("homeBody", map[string]any{
-		"Search": search, "Trends": RenderTrendsTabs(tab1Name, tab1, tab2Name, tab2),
+		"Search": search, "Trends": RenderTrendsTabs(tab1Name, tab1, tab2Name, tab2, p),
 	})
 }

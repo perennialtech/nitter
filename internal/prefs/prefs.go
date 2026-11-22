@@ -75,7 +75,8 @@ var Categories = []Category{
 		checkbox("bidiSupport", false, "Support bidirectional text (makes clicking on tweets harder)"),
 		checkbox("hideTweetStats", false, "Hide tweet stats (replies, retweets, likes)"),
 		checkbox("hideTweetSource", false, "Hide tweet source (iPhone, Android, etc.)"),
-		checkbox("abbreviateStats", false, "Abbreviate tweet stats (1.2M instead of 1,200,000)"),
+		checkbox("abbreviateStats", false, "Abbreviate tweet stats").withDoc(
+			"For example, 1.2M instead of 1,200,000."),
 		checkbox("hideBanner", false, "Hide profile banner"),
 		checkbox("hidePins", false, "Hide pinned tweets"),
 		checkbox("hideReplies", false, "Hide tweet replies"),
@@ -155,6 +156,8 @@ type Prefs struct {
 	ReplaceTwitter      string
 	ReplaceYouTube      string
 	ReplaceReddit       string
+
+	numberFormat *NumberFormat
 }
 
 // field returns a pointer to the field for name: *bool for checkboxes,

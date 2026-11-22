@@ -262,7 +262,7 @@ func pollPercent(perc float64, width int) string {
 	return strings.Trim(s, ".")
 }
 
-func renderPoll(poll *types.Poll) template.HTML {
+func renderPoll(poll *types.Poll, p *prefs.Prefs) template.HTML {
 	var opts []pollOption
 	for i, option := range poll.Options {
 		val := 0
@@ -282,7 +282,7 @@ func renderPoll(poll *types.Poll) template.HTML {
 	}
 	return exec("poll", map[string]any{
 		"Options": opts,
-		"Info":    fmt.Sprintf("%s votes • %s", insertSep(poll.Votes), poll.Status),
+		"Info":    fmt.Sprintf("%s votes • %s", p.Numbers().Int(poll.Votes), poll.Status),
 	})
 }
 
@@ -308,18 +308,16 @@ func renderCard(c *types.Card, p *prefs.Prefs, path string) template.HTML {
 	return exec("card", d)
 }
 
-func formatStat(stat int, abbreviate bool) string {
+func formatStat(stat int, abbreviate bool, numbers *prefs.NumberFormat) string {
 	switch {
 	case stat <= 0:
 		return ""
-	case !abbreviate:
-		return insertSep(stat)
-	case stat >= 1_000_000:
-		return strconv.FormatFloat(float64(stat)/1_000_000, 'f', 1, 64) + "M"
-	case stat >= 1_000:
-		return strconv.FormatFloat(float64(stat)/1_000, 'f', 1, 64) + "K"
+	case abbreviate && stat >= 1_000_000:
+		return numbers.OneDecimal(float64(stat)/1_000_000) + "M"
+	case abbreviate && stat >= 1_000:
+		return numbers.OneDecimal(float64(stat)/1_000) + "K"
 	}
-	return strconv.Itoa(stat)
+	return numbers.Int(stat)
 }
 
 // RenderStats renders a tweet's reply, retweet, quote, like and view counts.
@@ -328,12 +326,13 @@ func RenderStats(stats types.TweetStats, p *prefs.Prefs, t *types.Tweet) templat
 	source := strings.ReplaceAll(stats.Source, "Twitter for ", "")
 	source = strings.ReplaceAll(source, "Twitter ", "")
 	ab := p.AbbreviateStats
+	numbers := p.Numbers()
 	return exec("stats", map[string]any{
-		"Replies":      formatStat(stats.Replies, ab),
-		"Retweets":     formatStat(stats.Retweets, ab),
-		"Quotes":       formatStat(stats.Quotes, ab),
-		"Likes":        formatStat(stats.Likes, ab),
-		"Views":        formatStat(stats.Views, ab),
+		"Replies":      formatStat(stats.Replies, ab, numbers),
+		"Retweets":     formatStat(stats.Retweets, ab, numbers),
+		"Quotes":       formatStat(stats.Quotes, ab, numbers),
+		"Likes":        formatStat(stats.Likes, ab, numbers),
+		"Views":        formatStat(stats.Views, ab, numbers),
 		"RetweetsURL":  base + "/retweets",
 		"QuotesURL":    base + "/quotes",
 		"Birdwatch":    t.HasBirdwatch,
@@ -616,7 +615,7 @@ func RenderTweet(tweet *types.Tweet, p *prefs.Prefs, path string, o TweetOpts) t
 		d["Media"] = renderMedia(t.Media, p, path, o.BigThumb)
 	}
 	if t.Poll != nil {
-		d["Poll"] = renderPoll(t.Poll)
+		d["Poll"] = renderPoll(t.Poll, p)
 	}
 	if t.Quote != nil {
 		d["Quote"] = renderQuote(t.Quote, p, path, transURL)

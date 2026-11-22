@@ -75,6 +75,7 @@ func findThemes(staticDir string) ([]string, error) {
 
 func (c *ctx) html(status int, body string) error {
 	c.w.Header().Set("Content-Type", "text/html;charset=utf-8")
+	c.w.Header().Add("Vary", "Accept-Language")
 	c.w.WriteHeader(status)
 	io.WriteString(c.w, body)
 	return nil
@@ -148,7 +149,7 @@ func (s *Server) generalRoutes() {
 			if err != nil {
 				return err
 			}
-			body = views.RenderHomeBody(cfg.TrendsTab1Name, tab1, cfg.TrendsTab2Name, tab2, search)
+			body = views.RenderHomeBody(cfg.TrendsTab1Name, tab1, cfg.TrendsTab2Name, tab2, search, c.prefs())
 		}
 		return c.page(body, views.PageOpts{})
 	})
