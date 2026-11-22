@@ -69,7 +69,7 @@ func RenderBroadcast(bc types.Broadcast, p *prefs.Prefs, path string) template.H
 		"Avatar":    formatters.UserPic(bc.User.UserPic, "_bigger"),
 	}
 	if bc.TotalWatched > 0 {
-		d["Views"] = insertSep(bc.TotalWatched) + " views"
+		d["Views"] = p.Numbers().Int(bc.TotalWatched) + " views"
 	}
 	return exec("broadcast", d)
 }
@@ -109,7 +109,7 @@ func RenderSpace(sp types.AudioSpace, p *prefs.Prefs, path string) template.HTML
 		"Participants": participants,
 	}
 	if listeners > 0 {
-		d["Listeners"] = insertSep(listeners) + " listeners"
+		d["Listeners"] = p.Numbers().Int(listeners) + " listeners"
 	}
 	return exec("space", d)
 }

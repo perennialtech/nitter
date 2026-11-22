@@ -169,4 +169,16 @@ func TestTrendsPages(t *testing.T) {
 	}
 	get("/i/trending/999", http.StatusNotFound, "Story not found")
 	get("/i/trending/not-a-number", http.StatusNotFound)
+
+	for _, path := range []string{"/i/trends?tab=news", "/i/trending"} {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Header.Add("Accept-Language", "en;q=0.5")
+		r.Header.Add("Accept-Language", "de-DE")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "1.234 posts") || w.Header().Get("Vary") != "Accept-Language" {
+			t.Errorf("%s: expected localized count and Vary: Accept-Language, got %d and Vary: %q",
+				path, w.Code, w.Header().Get("Vary"))
+		}
+	}
 }

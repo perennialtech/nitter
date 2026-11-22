@@ -168,7 +168,7 @@ func rssTweet(t *types.Tweet, cfg *config.Config, p *prefs.Prefs, translate bool
 			}
 			d.Poll = append(d.Poll, pollPercent(perc, 0)+"% — "+xmlEscape(option))
 		}
-		d.Votes = insertSep(poll.Votes)
+		d.Votes = prefs.Defaults.Numbers().Int(poll.Votes)
 		d.Status = xmlEscape(poll.Status)
 	}
 	if t.Note != "" && !p.HideCommunityNotes {

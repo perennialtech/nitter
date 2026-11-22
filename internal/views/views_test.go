@@ -574,7 +574,7 @@ func TestOtherViews(t *testing.T) {
 			{ID: "9", Text: "see https://x.com/a", Helpful: true, CreatedAt: start},
 		}}, &p, "/i/birdwatch/t/1", false),
 		"history":  RenderBirdwatchHistory(types.BirdwatchHistory{Alias: "a", Bottom: "c d"}),
-		"trends":   RenderHomeBody("US", []types.Trend{{Name: "#go", SearchQuery: "#go lang", TweetVolume: -1}}, "World", nil, RenderSearch()),
+		"trends":   RenderHomeBody("US", []types.Trend{{Name: "#go", SearchQuery: "#go lang", TweetVolume: -1}}, "World", nil, RenderSearch(), &p),
 		"lists":    RenderListSearch(types.Result[types.ListSearchResult]{Content: []types.ListSearchResult{{List: types.List{ID: "1", Name: "L", Members: 1200}, FollowersContext: "65 followers including @jack", Facepiles: []string{"https://pbs.twimg.com/f.jpg"}}}}, &p, "/search"),
 		"users":    RenderUserList(nimUser(), types.UsersTimeline{Beginning: true, Content: []types.User{nimUser()}, Bottom: "x"}, &p, "/nim_lang/followers", "Followers"),
 		"edits":    RenderEditHistory(types.EditHistory{Latest: richTweet(), History: types.Tweets{richTweet()}}, &p, "/"),
@@ -590,7 +590,7 @@ func TestOtherViews(t *testing.T) {
 	if s := string(RenderSpace(types.AudioSpace{Admins: []types.SpaceParticipant{{Username: "h"}}, Creator: types.User{Username: "h"}}, &p, "")); !strings.Contains(s, `class="host-badge">Host<`) {
 		t.Errorf("space host badge:\n%s", s)
 	}
-	if s := string(RenderHomeBody("US", []types.Trend{{Name: "#go", SearchQuery: "#go lang", TweetVolume: 3}}, "W", nil, "")); !strings.Contains(s, `href="/search?q=%23go&#43;lang"`) &&
+	if s := string(RenderHomeBody("US", []types.Trend{{Name: "#go", SearchQuery: "#go lang", TweetVolume: 3}}, "W", nil, "", &p)); !strings.Contains(s, `href="/search?q=%23go&#43;lang"`) &&
 		!strings.Contains(s, `href="/search?q=%23go+lang"`) {
 		t.Errorf("trend link:\n%s", s)
 	}
@@ -858,12 +858,63 @@ func TestTranslatedCommunityNotesRss(t *testing.T) {
 	}
 }
 
-func TestHelpers(t *testing.T) {
-	for in, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567", -1234: "-1,234"} {
-		if got := insertSep(in); got != want {
-			t.Errorf("insertSep(%d) = %q", in, got)
+func TestLocalizedCounts(t *testing.T) {
+	for _, tc := range []struct {
+		language, count, abbreviated string
+	}{
+		{"", "1,234,567", "1.2M"},
+		{"en;q=0.5, de-DE", "1.234.567", "1,2M"},
+		{"fr-FR", "1\u202f234\u202f567", "1,2M"},
+		{"en-IN", "12,34,567", "1.2M"},
+		{"ar-EG", "١٬٢٣٤٬٥٦٧", "١٫٢M"},
+		{"ar-EG-u-nu-latn", "1,234,567", "1.2M"},
+		{"invalid_tag_!", "1,234,567", "1.2M"},
+	} {
+		t.Run(tc.language, func(t *testing.T) {
+			p := prefs.Defaults
+			p.SetNumberLanguage(tc.language)
+			tweet := richTweet()
+			tweet.Stats.Retweets = 1_234_567
+			if html := RenderTweet(tweet, &p, "/", TweetOpts{}); !strings.Contains(string(html), tc.count) {
+				t.Errorf("tweet missing full count %q", tc.count)
+			}
+			p.AbbreviateStats = true
+			if html := RenderTweet(tweet, &p, "/", TweetOpts{}); !strings.Contains(string(html), tc.abbreviated) {
+				t.Errorf("tweet missing abbreviated count %q", tc.abbreviated)
+			}
+			if html := renderPoll(&types.Poll{Votes: 1_234_567, Options: []string{"Yes"}}, &p); !strings.Contains(string(html), tc.count+" votes") {
+				t.Errorf("poll missing vote count %q", tc.count)
+			}
+		})
+	}
+}
+
+func TestLocalizedTrendRows(t *testing.T) {
+	p := prefs.Defaults
+	p.SetNumberLanguage("es-ES")
+	trends := []types.Trend{
+		{Name: "Small count", TweetVolume: 1234},
+		{Name: "Large count", TweetVolume: 12345},
+		{Name: "Zero count", TweetVolume: 0},
+		{Name: "Unknown count", TweetVolume: -1},
+	}
+	for name, html := range map[string]template.HTML{
+		"homepage": RenderHomeBody("US", trends, "World", nil, "", &p),
+		"trends":   RenderTrendsPage(TrendsPage{Trends: trends}, &p),
+	} {
+		body := string(html)
+		for _, count := range []string{"1234 tweets", "12.345 tweets", "0 tweets"} {
+			if !strings.Contains(body, count) {
+				t.Errorf("%s missing %q", name, count)
+			}
+		}
+		if strings.Count(body, `class="trend-volume"`) != 3 {
+			t.Errorf("%s should omit only the unknown count", name)
 		}
 	}
+}
+
+func TestHelpers(t *testing.T) {
 	for _, c := range []struct {
 		perc  float64
 		width int
@@ -878,9 +929,6 @@ func TestHelpers(t *testing.T) {
 	}
 	if got := encodeURLNoPlus("a b+c:"); got != "a%20b%2Bc%3A" {
 		t.Errorf("encodeURLNoPlus = %q", got)
-	}
-	if got := formatStat(1234567, true); got != "1.2M" {
-		t.Errorf("formatStat = %q", got)
 	}
 	if got := xmlEscape(`<a href="x">'&`); got != "&lt;a href=&quot;x&quot;&gt;&apos;&amp;" {
 		t.Errorf("xmlEscape = %q", got)

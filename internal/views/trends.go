@@ -32,17 +32,18 @@ func storyTime(ms int64) string {
 	return formatters.Time(time.UnixMilli(ms).UTC())
 }
 
-func RenderTrendsPage(page TrendsPage) template.HTML {
+func RenderTrendsPage(page TrendsPage, p *prefs.Prefs) template.HTML {
 	var results template.HTML
 	if page.Stories == nil {
-		results = renderTrendsList(page.Trends)
+		results = renderTrendsList(page.Trends, p)
 	} else {
+		numbers := p.Numbers()
 		list := resultsData{}
 		empty := len(page.Stories.Stories) == 0
 		for _, story := range page.Stories.Stories {
 			list.Items = append(list.Items, exec("storyItem", map[string]any{
 				"Story": story,
-				"Count": insertSep(int(story.PostCount)),
+				"Count": numbers.Int64(story.PostCount),
 				"Date":  storyTime(story.CreatedMs),
 			}))
 		}

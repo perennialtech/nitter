@@ -248,6 +248,7 @@ func (s *Server) prefs(r *http.Request) *prefs.Prefs {
 		params[k] = vs[0]
 	}
 	p := prefs.Parse(cookies, params)
+	p.SetNumberLanguage(strings.Join(r.Header.Values("Accept-Language"), ","))
 	return &p
 }
 

@@ -57,10 +57,17 @@
 .trend-item a {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 0.6em;
 }
 
+.trend-name {
+  overflow-wrap: anywhere;
+}
+
 .trend-volume {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--fg_faded, #888);
   font-size: 0.85em;
 }

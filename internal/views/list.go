@@ -86,7 +86,7 @@ func RenderCommunity(body, nav template.HTML, c types.Community, p *prefs.Prefs)
 		"C":         c,
 		"Path":      communityPath(c),
 		"BannerURL": utils.MediaPicURL(c.Banner, p.DirectMedia),
-		"Members":   insertSep(c.MemberCount),
+		"Members":   p.Numbers().Int(c.MemberCount),
 		"Nav":       nav,
 		"Body":      body,
 	})

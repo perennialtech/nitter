@@ -23,12 +23,13 @@
 
 {{- define "trendsList" -}}
 <ul class="trends-list">
-  {{- range .}}
+  {{- $numbers := .Numbers}}
+  {{- range .Trends}}
   <li class="trend-item">
     <a href="{{url (print "/search?q=" (encodeURL .SearchQuery))}}">
       <span class="trend-name">{{.Name}}</span>
       {{- if ge .TweetVolume 0}}
-      <span class="trend-volume">{{.TweetVolume}} tweets</span>
+      <span class="trend-volume">{{$numbers.Int .TweetVolume}} tweets</span>
       {{- end}}
     </a>
   </li>

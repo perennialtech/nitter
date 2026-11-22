@@ -187,7 +187,7 @@ func renderListCard(r types.ListSearchResult, p *prefs.Prefs) template.HTML {
 		"R":       r,
 		"P":       p,
 		"URL":     "/i/lists/" + r.List.ID,
-		"Members": "· " + insertSep(r.List.Members) + " members",
+		"Members": "· " + p.Numbers().Int(r.List.Members) + " members",
 	}
 	if r.FollowersContext != "" {
 		mentioned := mentionedUser(r.FollowersContext)
@@ -222,7 +222,7 @@ func RenderTimelineCommunities(results types.Result[types.Community], p *prefs.P
 	return exec("timelineResults", timelineResults(results, path, func(c types.Community) template.HTML {
 		return exec("communitySearchCard", map[string]any{
 			"C": c, "P": p, "URL": "/i/communities/" + c.ID,
-			"Members": "· " + insertSep(c.MemberCount) + " members",
+			"Members": "· " + p.Numbers().Int(c.MemberCount) + " members",
 		})
 	}))
 }

@@ -18,6 +18,7 @@ type statData struct {
 
 // RenderUserCard renders the profile card in a profile's sidebar.
 func RenderUserCard(u types.User, p *prefs.Prefs, info types.AccountInfo) template.HTML {
+	numbers := p.Numbers()
 	size := "_400x400"
 	if p.AutoplayGifs && strings.HasSuffix(u.UserPic, "gif") {
 		size = ""
@@ -33,10 +34,10 @@ func RenderUserCard(u types.User, p *prefs.Prefs, info types.AccountInfo) templa
 		"JoinFull":  formatters.JoinDateFull(u),
 		"JoinDate":  formatters.JoinDate(u),
 		"Stats": []statData{
-			{"posts", "Tweets", insertSep(u.Tweets), ""},
-			{"following", "Following", insertSep(u.Following), "/" + u.Username + "/following"},
-			{"followers", "Followers", insertSep(u.Followers), "/" + u.Username + "/followers"},
-			{"likes", "Likes", insertSep(u.Likes), ""},
+			{"posts", "Tweets", numbers.Int(u.Tweets), ""},
+			{"following", "Following", numbers.Int(u.Following), "/" + u.Username + "/following"},
+			{"followers", "Followers", numbers.Int(u.Followers), "/" + u.Username + "/followers"},
+			{"likes", "Likes", numbers.Int(u.Likes), ""},
 		},
 	}
 	if u.Location != "" {
@@ -76,7 +77,7 @@ func renderPhotoRail(profile *types.Profile, p *prefs.Prefs) template.HTML {
 	}
 	return exec("photoRail", map[string]any{
 		"MediaURL": "/" + profile.User.Username + "/media",
-		"Label":    insertSep(profile.User.Media) + " Photos and videos",
+		"Label":    p.Numbers().Int(profile.User.Media) + " Photos and videos",
 		"Photos":   photos,
 		"P":        p,
 	})
