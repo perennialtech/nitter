@@ -87,7 +87,7 @@ func (s *Server) searchRoutes() {
 			}
 			return c.page(views.RenderUserSearch(users, p), views.PageOpts{TitleText: title})
 		case types.QueryTweets, types.QueryTop, types.QueryMedia:
-			tweets, err := api.GraphTweetSearch(ctx, sq, c.cursor())
+			tweets, err := searchTweets(ctx, sq, c.cursor())
 			if err != nil {
 				return err
 			}

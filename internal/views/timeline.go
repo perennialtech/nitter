@@ -273,6 +273,10 @@ func renderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, p
 	if len(results.Content) == 0 {
 		if !results.Beginning {
 			d["Footer"] = exec("noMore", nil)
+		} else if cursor := getSearchMaxID(results); cursor != "" {
+			d["More"] = RenderMore(results.Query, cursor, "", extra)
+		} else if results.Bottom != "" {
+			d["More"] = RenderMore(results.Query, results.Bottom, "", extra)
 		} else {
 			d["Footer"] = exec("noneFound", nil)
 		}
@@ -304,6 +308,8 @@ func renderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, p
 		d["More"] = RenderMore(results.Query, cursor, "", extra)
 	} else if results.Bottom != "" {
 		d["More"] = RenderMore(results.Query, results.Bottom, "", extra)
+	} else {
+		d["Footer"] = exec("noMore", nil)
 	}
 	d["ToTop"] = RenderToTop("#")
 	return exec("timelineTweets", d)

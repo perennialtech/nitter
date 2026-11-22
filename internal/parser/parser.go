@@ -751,6 +751,7 @@ func parseTweet(js, jsCard gjson.Result, replyID int64, hasArticle bool) *types.
 		Time:      t,
 		HasThread: notNull(get(js, "self_thread")),
 		Available: true,
+		Sensitive: getBool(get(js, "possibly_sensitive")),
 		User:      types.User{ID: str(get(js, "user_id_str")), VerifiedType: types.VerifiedNone},
 		ExpURL:    str(get(js, "expanded")),
 		Stats: types.TweetStats{
@@ -784,6 +785,8 @@ func parseTweet(js, jsCard gjson.Result, replyID int64, hasArticle bool) *types.
 	if rt := get(js, "retweeted_status_id_str"); notNull(rt) {
 		r := newTweet()
 		r.ID = GetID(rt)
+		r.Sensitive = result.Sensitive
+		parseLegacyMediaEntities(js, r)
 		result.Retweet = r
 		return result
 	}
@@ -792,16 +795,36 @@ func parseTweet(js, jsCard gjson.Result, replyID int64, hasArticle bool) *types.
 	if rt := get(js, "retweeted_status_result.result"); notNull(rt) {
 		// needed due to weird edgecase where the actual tweet data isn't included
 		if has(rt, "legacy") || has(rt, "rest_id") {
-			result.Retweet = ParseGraphTweet(rt)
-			return result
+			retweet := ParseGraphTweet(rt)
+			if retweet.ID != 0 || retweet.Text != "" || retweet.User.ID != "" {
+				if len(retweet.Media) == 0 {
+					outer := newTweet()
+					parseLegacyMediaEntities(js, outer)
+					retweet.Media = outer.Media
+					retweet.Attribution = outer.Attribution
+					retweet.AttributionLink = outer.AttributionLink
+				}
+				retweet.Sensitive = retweet.Sensitive || result.Sensitive
+				result.Retweet = retweet
+				return result
+			}
 		}
 	}
 
 	if reposts := get(js, "repostedStatusResults"); notNull(reposts) {
 		if rt := get(reposts, "result"); notNull(rt) {
 			if has(rt, "legacy") || has(rt, "rest_id") {
-				result.Retweet = ParseGraphTweet(rt)
-				return result
+				retweet := ParseGraphTweet(rt)
+				if retweet.ID != 0 || retweet.Text != "" || retweet.User.ID != "" {
+					if len(retweet.Media) == 0 {
+						outer := newTweet()
+						parseLegacyMediaEntities(js, outer)
+						retweet.Media = outer.Media
+					}
+					retweet.Sensitive = retweet.Sensitive || result.Sensitive
+					result.Retweet = retweet
+					return result
+				}
 			}
 		}
 	}
@@ -1395,6 +1418,22 @@ func ParseGraphPhotoRail(js gjson.Result) types.PhotoRail {
 					if len(result) == 16 {
 						return result
 					}
+				}
+			}
+		}
+	}
+	return result
+}
+
+// ParseGraphPhotoRailFromTweets extracts up to 16 gallery photos from timeline threads.
+func ParseGraphPhotoRailFromTweets(threads []types.Tweets) types.PhotoRail {
+	result := types.PhotoRail{}
+	for _, thread := range threads {
+		for _, t := range thread {
+			if photo := ExtractGalleryPhoto(t); photo.URL != "" {
+				result = append(result, photo)
+				if len(result) == 16 {
+					return result
 				}
 			}
 		}

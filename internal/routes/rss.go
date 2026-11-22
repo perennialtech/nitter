@@ -40,7 +40,7 @@ func (c *ctx) timelineRss(q types.Query) (types.Rss, error) {
 	var profile types.Profile
 	if len(users) == 1 {
 		var err error
-		if profile, err = fetchProfile(c.r.Context(), after, q, p, true, true); err != nil {
+		if profile, err = fetchProfile(c.r.Context(), after, q, p, true, true, false); err != nil {
 			return types.Rss{}, err
 		}
 	} else {

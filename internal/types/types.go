@@ -446,6 +446,7 @@ type Tweet struct {
 	Pinned             bool
 	HasThread          bool
 	Available          bool
+	Sensitive          bool
 	ExpURL             string
 	Tombstone          string
 	Location           string
