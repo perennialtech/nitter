@@ -63,6 +63,7 @@ const (
 	graphBroadcast                 = "RG6wSogandh6WPIzxW9aag/BroadcastQuery"
 	graphAudioSpace                = "Bh0L6azTQoMs9rJKeCF4wQ/AudioSpaceById"
 	restLiveStream                 = "1.1/live_video_stream/status/"
+	restBroadcastsShow             = "1.1/broadcasts/show.json"
 	restTrends                     = "1.1/trends/place.json"
 	graphFollowers                 = "JNyQdTISpzCkj_1fqxDvFg/Followers"
 	graphFollowing                 = "qGZZDF3mp91q7X22s3HxpA/Following"

@@ -507,3 +507,39 @@ func TestDialErrorsAreNotRetried(t *testing.T) {
 		t.Fatalf("a refused connection must be returned as it is, got %v", err)
 	}
 }
+
+func TestBroadcastStreamAndPlaylistFallback(t *testing.T) {
+	addCookieSessions(t, 1)
+	var liveClient string
+	var playlistIDs string
+	fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, restLiveStream+"28_direct"):
+			liveClient = r.URL.Query().Get("client")
+			w.Write([]byte(`{"source":{"hlsUrl":"https://video.twimg.com/direct.m3u8"}}`))
+		case strings.Contains(r.URL.Path, restLiveStream+"28_fallback"):
+			w.Write([]byte(`{"source":{}}`))
+		case strings.Contains(r.URL.Path, restBroadcastsShow):
+			playlistIDs = r.URL.Query().Get("ids")
+			w.Write([]byte(`{"broadcasts":{"28_fallback":{"playlist_url":"https://video.twimg.com/fallback.m3u8"}}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	got, err := BroadcastStream(context.Background(), "28_direct")
+	if err != nil || got != "https://video.twimg.com/direct.m3u8" {
+		t.Fatalf("BroadcastStream direct = %q, %v", got, err)
+	}
+	if liveClient != "web" {
+		t.Fatalf("client query param = %q, want web", liveClient)
+	}
+
+	got, err = BroadcastStream(context.Background(), "28_fallback")
+	if err != nil || got != "https://video.twimg.com/fallback.m3u8" {
+		t.Fatalf("BroadcastStream fallback = %q, %v", got, err)
+	}
+	if playlistIDs != "28_fallback" {
+		t.Fatalf("broadcasts/show ids = %q, want 28_fallback", playlistIDs)
+	}
+}

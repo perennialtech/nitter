@@ -164,17 +164,51 @@ func BroadcastInfo(ctx context.Context, id string) (types.Broadcast, error) {
 	return parser.ParseBroadcastInfo(js), nil
 }
 
+func fetchBroadcastPlaylist(ctx context.Context, mediaKey string) (string, error) {
+	if mediaKey == "" {
+		return "", nil
+	}
+	u := apiURL{endpoint: restBroadcastsShow, params: []param{{"ids", mediaKey}}}
+	js, err := fetch(ctx, apiReq{cookie: u, oauth: u})
+	if err != nil {
+		return "", err
+	}
+	bc := js.Get("broadcasts").Map()[mediaKey]
+	if playlist := getStr(bc.Get("playlist_url")); playlist != "" {
+		return playlist, nil
+	}
+	return getStr(bc.Get("hls_url")), nil
+}
+
 // BroadcastStream fetches the playback URL of a broadcast or space's media
-// key.
+// key, falling back to the broadcasts/show playlist endpoint if needed.
 func BroadcastStream(ctx context.Context, mediaKey string) (string, error) {
 	if mediaKey == "" {
 		return "", nil
 	}
-	js, err := fetch(ctx, restReq(restLiveStream+mediaKey))
+	u := apiURL{endpoint: restLiveStream + mediaKey, params: []param{{"client", "web"}}}
+	js, err := fetch(ctx, apiReq{cookie: u, oauth: u})
+	if err == nil {
+		for _, path := range []string{
+			"source.noRedirectPlaybackUrl",
+			"source.location",
+			"source.hls_url",
+			"source.hlsUrl",
+			"source.playbackUrl",
+		} {
+			if stream := getStr(js.Get(path)); stream != "" {
+				return stream, nil
+			}
+		}
+	}
+	playlist, perr := fetchBroadcastPlaylist(ctx, mediaKey)
+	if perr == nil && playlist != "" {
+		return playlist, nil
+	}
 	if err != nil {
 		return "", err
 	}
-	return getStrOr(js.Get("source.noRedirectPlaybackUrl"), getStr(js.Get("source.location"))), nil
+	return "", perr
 }
 
 // AudioSpace fetches a space.
