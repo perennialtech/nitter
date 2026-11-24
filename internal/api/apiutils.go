@@ -116,13 +116,19 @@ type apiURL struct {
 
 // apiReq is one request, as it is made with each kind of session.
 type apiReq struct {
-	oauth  apiURL
-	cookie apiURL
-	search bool
+	oauth        apiURL
+	cookie       apiURL
+	search       bool
+	preferActive bool
 }
 
 func (r apiReq) auth() auth.Req {
-	return auth.Req{OAuth: r.oauth.endpoint, Cookie: r.cookie.endpoint, Search: r.search}
+	return auth.Req{
+		OAuth:        r.oauth.endpoint,
+		Cookie:       r.cookie.endpoint,
+		Search:       r.search,
+		PreferActive: r.preferActive,
+	}
 }
 
 func (r apiReq) forKind(kind auth.Kind) apiURL {
@@ -541,7 +547,7 @@ func fetchOnce(ctx context.Context, req apiReq, s *auth.Session,
 			if !containsAny(codes, errorsToSkip...) {
 				log.Printf("Fetch error, API: %s, errors: %v, session: %s", t.path, codes, s)
 				switch {
-				case containsAny(codes, types.ErrExpiredToken, types.ErrBadToken, types.ErrLocked):
+				case containsAny(codes, types.ErrExpiredToken, types.ErrBadToken, types.ErrLocked, types.ErrCouldntAuth):
 					return "", errInvalidSession
 				case containsAny(codes, types.ErrRateLimitedCode):
 					// rate limit hit, resets after 24 hours
@@ -648,7 +654,7 @@ func fetchValidated(ctx context.Context, req apiReq, validate func(gjson.Result)
 		js := gjson.Parse(body)
 		if code := getError(js); !slices.Contains(errorsToSkip, code) {
 			log.Printf("Fetch error, API: %s, error: %d", req.cookie.endpoint, code)
-			if slices.Contains([]types.ErrorCode{types.ErrExpiredToken, types.ErrBadToken, types.ErrLocked}, code) {
+			if slices.Contains([]types.ErrorCode{types.ErrExpiredToken, types.ErrBadToken, types.ErrLocked, types.ErrCouldntAuth}, code) {
 				return "", errInvalidSession
 			}
 		}

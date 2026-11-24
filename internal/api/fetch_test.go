@@ -543,3 +543,17 @@ func TestBroadcastStreamAndPlaylistFallback(t *testing.T) {
 		t.Fatalf("broadcasts/show ids = %q, want 28_fallback", playlistIDs)
 	}
 }
+
+func TestCouldntAuthInvalidatesSession(t *testing.T) {
+	addCookieSessions(t, 2)
+	fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"errors":[{"code":32,"message":"Could not authenticate you."}]}`))
+	})
+	before := sessionTotal(t)
+	if _, err := fetchRaw(context.Background(), testReq); !errors.Is(err, types.ErrRateLimited) {
+		t.Fatalf("got %v, want ErrRateLimited", err)
+	}
+	if after := sessionTotal(t); after != before-1 {
+		t.Fatalf("sessions %d -> %d; couldntAuth session must be dropped", before, after)
+	}
+}

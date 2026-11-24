@@ -157,7 +157,9 @@ func BroadcastInfo(ctx context.Context, id string) (types.Broadcast, error) {
 	if id == "" {
 		return types.Broadcast{}, nil
 	}
-	js, err := fetch(ctx, gqlReq(graphBroadcast, obj{{"id", id}}.String(), ""))
+	req := gqlReq(graphBroadcast, obj{{"id", id}}.String(), "")
+	req.preferActive = true
+	js, err := fetch(ctx, req)
 	if err != nil {
 		return types.Broadcast{}, err
 	}
@@ -169,7 +171,7 @@ func fetchBroadcastPlaylist(ctx context.Context, mediaKey string) (string, error
 		return "", nil
 	}
 	u := apiURL{endpoint: restBroadcastsShow, params: []param{{"ids", mediaKey}}}
-	js, err := fetch(ctx, apiReq{cookie: u, oauth: u})
+	js, err := fetch(ctx, apiReq{cookie: u, oauth: u, preferActive: true})
 	if err != nil {
 		return "", err
 	}
@@ -187,7 +189,7 @@ func BroadcastStream(ctx context.Context, mediaKey string) (string, error) {
 		return "", nil
 	}
 	u := apiURL{endpoint: restLiveStream + mediaKey, params: []param{{"client", "web"}}}
-	js, err := fetch(ctx, apiReq{cookie: u, oauth: u})
+	js, err := fetch(ctx, apiReq{cookie: u, oauth: u, preferActive: true})
 	if err == nil {
 		for _, path := range []string{
 			"source.noRedirectPlaybackUrl",

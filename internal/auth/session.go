@@ -71,11 +71,14 @@ func NewGuestSession(token string) *Session {
 }
 
 // Req names the endpoint a request uses for each session kind, which is what
-// rate limits are tracked by. Search requests require a non-suspended account.
+// rate limits are tracked by. Search requests require a non-suspended account;
+// PreferActive prefers non-suspended accounts while falling back to suspended
+// ones when none are ready.
 type Req struct {
-	OAuth  string
-	Cookie string
-	Search bool
+	OAuth        string
+	Cookie       string
+	Search       bool
+	PreferActive bool
 }
 
 // Endpoint is the endpoint req uses with s.
