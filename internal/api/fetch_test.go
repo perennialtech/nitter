@@ -19,8 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/perennialtech/nitter/internal/auth"
 	"github.com/perennialtech/nitter/internal/config"
+	"github.com/perennialtech/nitter/internal/flags"
 	"github.com/perennialtech/nitter/internal/prefs"
 	"github.com/perennialtech/nitter/internal/types"
 )
@@ -556,4 +559,81 @@ func TestCouldntAuthInvalidatesSession(t *testing.T) {
 	if after := sessionTotal(t); after != before-1 {
 		t.Fatalf("sessions %d -> %d; couldntAuth session must be dropped", before, after)
 	}
+}
+
+func TestGraphTweetSearchCommunityFallbackAndTagGuestHandling(t *testing.T) {
+	t.Run("empty first page falls back to community search", func(t *testing.T) {
+		addCookieSessions(t, 1)
+		var sawSearch, sawCommunity bool
+		var communityRawQuery string
+		fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Host == "api.fxtwitter.com" {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/SearchTimeline"):
+				sawSearch = true
+				w.Write([]byte(`{"data":{}}`))
+			case strings.HasSuffix(r.URL.Path, "/GlobalCommunitiesLatestPostSearchTimeline"):
+				sawCommunity = true
+				communityRawQuery = gjson.Parse(r.URL.Query().Get("variables")).Get("rawQuery").String()
+				w.Write([]byte(`{"data":{"search_by_raw_query":{"search_timeline":{"timeline":{"instructions":[{"type":"TimelineAddEntries","entries":[{"entryId":"tweet-1","content":{"itemContent":{"tweet_results":{"result":{"__typename":"Tweet","rest_id":"1","legacy":{"id_str":"1","full_text":"hello","user_id_str":"10"}}}}}}]}]}}}}}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+
+		tl, err := GraphTweetSearch(context.Background(), types.Query{Kind: types.QueryTweets, Text: "golang"}, "")
+		if err != nil {
+			t.Fatalf("GraphTweetSearch error: %v", err)
+		}
+		if !sawSearch || !sawCommunity {
+			t.Fatalf("sawSearch=%v sawCommunity=%v, want both true", sawSearch, sawCommunity)
+		}
+		if strings.Contains(communityRawQuery, "include:nativeretweets") {
+			t.Fatalf("community query kept include:nativeretweets: %q", communityRawQuery)
+		}
+		if len(tl.Content) != 1 {
+			t.Fatalf("got %d tweets, want 1", len(tl.Content))
+		}
+	})
+
+	t.Run("guest mode avoids community search for hashtag and cashtag", func(t *testing.T) {
+		saveSettings(t)
+		origGuest := flags.GuestAuth
+		flags.GuestAuth = true
+		guestAuthorization = "Bearer test-guest"
+		t.Cleanup(func() { flags.GuestAuth = origGuest })
+		guest := auth.NewGuestSession("guest-tok")
+		auth.AddGuestSession(guest)
+		t.Cleanup(func() { auth.Invalidate(guest) })
+
+		var paths []string
+		fakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Host == "api.fxtwitter.com" {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			paths = append(paths, r.URL.Path)
+			w.Write([]byte(`{"data":{}}`))
+		})
+
+		_, _ = GraphTweetSearch(context.Background(), types.Query{Kind: types.QueryTweets, Text: "golang"}, "")
+		if len(paths) != 1 || !strings.HasSuffix(paths[0], "/GlobalCommunitiesLatestPostSearchTimeline") {
+			t.Fatalf("plain guest search paths = %v, want community search", paths)
+		}
+
+		paths = nil
+		_, _ = GraphTweetSearch(context.Background(), types.Query{Kind: types.QueryTweets, Text: "#golang"}, "")
+		if len(paths) == 0 || !strings.HasSuffix(paths[0], "/SearchTimeline") {
+			t.Fatalf("hashtag guest search paths = %v, want SearchTimeline first", paths)
+		}
+
+		paths = nil
+		_, _ = GraphTweetSearch(context.Background(), types.Query{Kind: types.QueryTweets, Text: "$GOOG"}, "")
+		if len(paths) == 0 || !strings.HasSuffix(paths[0], "/SearchTimeline") {
+			t.Fatalf("cashtag guest search paths = %v, want SearchTimeline first", paths)
+		}
+	})
 }

@@ -271,7 +271,9 @@ func renderTimelineTweets(results types.Timeline, p *prefs.Prefs, path string, p
 	}
 
 	if len(results.Content) == 0 {
-		if !results.Beginning {
+		if results.Failed {
+			// Leave out empty-state messages when the underlying fetch failed.
+		} else if !results.Beginning {
 			d["Footer"] = exec("noMore", nil)
 		} else if cursor := getSearchMaxID(results); cursor != "" {
 			d["More"] = RenderMore(results.Query, cursor, "", extra)

@@ -961,3 +961,15 @@ func TestBlankSearchAndTerminalFooter(t *testing.T) {
 	doc := parse(t, RenderTimelineTweets(terminal, &p, "/search", nil))
 	requireSel(t, doc, ".timeline-footer .timeline-end")
 }
+
+func TestRenderTimelineTweetsFailedOmitsEmptyFooter(t *testing.T) {
+	p := prefs.Parse(nil, nil)
+	got := string(RenderTimelineTweets(types.Timeline{
+		Beginning: true,
+		Failed:    true,
+		Query:     types.Query{Kind: types.QueryTweets, Text: "test"},
+	}, &p, "/search", nil))
+	if strings.Contains(got, "No items found") || strings.Contains(got, "No more items") {
+		t.Fatalf("failed empty timeline should omit empty-state footer, got: %s", got)
+	}
+}

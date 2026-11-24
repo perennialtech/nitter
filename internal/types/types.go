@@ -490,6 +490,7 @@ type Result[T any] struct {
 	Top       string
 	Bottom    string
 	Beginning bool
+	Failed    bool
 	Query     Query
 }
 

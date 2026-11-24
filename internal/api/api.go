@@ -7,6 +7,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -712,15 +713,34 @@ func GraphTweetSearch(ctx context.Context, q types.Query, after string) (types.T
 	}
 
 	if !fromFx {
-		vars := searchVars(rawQuery, product).with("withBirdwatchNotes", true)
-		if cursor != "" {
-			vars = vars.with("cursor", cursor)
+		trimmed := strings.TrimSpace(q.Text)
+		tagSearch := len(trimmed) > 0 && (trimmed[0] == '#' || trimmed[0] == '$')
+		if flags.GuestAuth && !tagSearch {
+			tl, err := fetchTweetSearchPage(ctx, q, rawQuery, product, after, cursor, true)
+			if err != nil {
+				return types.Timeline{}, err
+			}
+			result = tl
+		} else {
+			tl, err := fetchTweetSearchPage(ctx, q, rawQuery, product, after, cursor, false)
+			if err != nil {
+				if after != "" || errors.Is(err, types.ErrNoSessions) {
+					return types.Timeline{}, err
+				}
+				fb, ferr := fetchTweetSearchPage(ctx, q, rawQuery, product, after, cursor, true)
+				if ferr != nil {
+					return types.Timeline{}, err
+				}
+				result = fb
+			} else {
+				result = tl
+				if after == "" && len(result.Content) == 0 && result.Bottom == "" {
+					if fb, ferr := fetchTweetSearchPage(ctx, q, rawQuery, product, after, cursor, true); ferr == nil && len(fb.Content) > 0 {
+						result = fb
+					}
+				}
+			}
 		}
-		js, err := fetch(ctx, searchTimelineReq(vars))
-		if err != nil {
-			return types.Timeline{}, err
-		}
-		result = parser.ParseGraphSearchTweets(js, after)
 	}
 	result.Query = q
 
@@ -731,6 +751,39 @@ func GraphTweetSearch(ctx context.Context, q types.Query, after string) (types.T
 		result.Content = nil
 	}
 	return result, nil
+}
+
+func fetchTweetSearchPage(ctx context.Context, q types.Query, rawQuery, product, after, cursor string,
+	community bool) (types.Timeline, error) {
+	var req apiReq
+	if community {
+		communityQuery := strings.Join(strings.Fields(strings.ReplaceAll(rawQuery, "include:nativeretweets", "")), " ")
+		vars := obj{
+			{"rawQuery", communityQuery},
+			{"count", 20},
+			{"withGrokTranslatedBio", true},
+		}
+		if cursor != "" {
+			vars = vars.with("cursor", cursor)
+		}
+		endpoint := graphCommunityLatest
+		if q.Kind == types.QueryTop {
+			endpoint = graphCommunityTop
+		}
+		req = gqlReq(endpoint, vars.String(), "")
+		req.search = true
+	} else {
+		vars := searchVars(rawQuery, product).with("withBirdwatchNotes", true)
+		if cursor != "" {
+			vars = vars.with("cursor", cursor)
+		}
+		req = searchTimelineReq(vars)
+	}
+	js, err := fetch(ctx, req)
+	if err != nil {
+		return types.Timeline{}, err
+	}
+	return parser.ParseGraphSearchTweets(js, after), nil
 }
 
 func productSearch(ctx context.Context, q types.Query, product, after string) (gjson.Result, error) {
