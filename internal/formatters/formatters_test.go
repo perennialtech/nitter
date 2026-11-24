@@ -45,7 +45,14 @@ func TestReplaceURLs(t *testing.T) {
 		{"https://redd.it/abc", "https://teddit.example/comments/abc"},
 		// v.redd.it and subreddit-looking hosts after '.' or 'b' aren't replaced
 		{"https://v.redd.it/abc", "https://v.redd.it/abc"},
-		{"https://youtu.be/abc", "https://piped.example/abc"},
+		{"https://youtu.be/abc", "https://piped.example/watch?v=abc"},
+		{"https://youtu.be/dQw4w9WgXcQ?t=42&si=xyz", "https://piped.example/watch?v=dQw4w9WgXcQ"},
+		{"https://www.youtu.be/abc_123-X", "https://piped.example/watch?v=abc_123-X"},
+		{"https://m.youtu.be/abc", "https://piped.example/watch?v=abc"},
+		{`<a href="https://youtu.be/abc?t=5">youtu.be/abc</a>`, `<a href="https://piped.example/watch?v=abc">piped.example/watch?v=abc</a>`},
+		{"https://www.youtube.com/watch?v=abc", "https://piped.example/watch?v=abc"},
+		{"https://notyoutu.be/abc", "https://notyoutu.be/abc"},
+		{"https://sub.youtu.be/abc", "https://sub.youtu.be/abc"},
 	}
 	for _, c := range cases {
 		if got := ReplaceURLs(c.in, &p, ""); got != c.want {

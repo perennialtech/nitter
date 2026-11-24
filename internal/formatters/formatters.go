@@ -41,7 +41,8 @@ var (
 	xBareRegex   = regexp.MustCompile(`(\s)(www\.|mobile\.)?x\.com`)
 	xLinkRegex   = regexp.MustCompile(`<a href="https://x.com([^"]+)">x\.com(\S+)</a>`)
 
-	ytRegex = regexp.MustCompile(`(?i)([A-z.]+\.)?youtu(be\.com|\.be)`)
+	ytRegex      = regexp.MustCompile(`(?i)([A-z.]+\.)?youtube\.com`)
+	ytShortRegex = regexp.MustCompile(`(?i)((www|m)\.)?youtu\.be/([\w-]+)(\?[^\s"'<>]*)?`)
 
 	// Matches must not follow '.' or 'b'; replaceNotAfter checks that.
 	// v.redd.it videos and i.redd.it images aren't replaced: frontends
@@ -161,13 +162,46 @@ func replaceNotAfter(s string, re *regexp.Regexp, notAfter, repl string) string 
 	return b.String()
 }
 
+func isYouTubeHostBoundary(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') ||
+		(b >= '0' && b <= '9') || b == '.' || b == '-'
+}
+
+func replaceYouTubeShort(s, host string) string {
+	var b strings.Builder
+	last, pos := 0, 0
+	for pos <= len(s) {
+		loc := ytShortRegex.FindStringSubmatchIndex(s[pos:])
+		if loc == nil {
+			break
+		}
+		start, end := pos+loc[0], pos+loc[1]
+		if start > 0 && isYouTubeHostBoundary(s[start-1]) {
+			pos = start + 1
+			continue
+		}
+		idStart, idEnd := pos+loc[6], pos+loc[7]
+		b.WriteString(s[last:start])
+		b.WriteString(host)
+		b.WriteString("/watch?v=")
+		b.WriteString(s[idStart:idEnd])
+		last, pos = end, end
+		if end == start {
+			pos++
+		}
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
 // ReplaceURLs rewrites links to the visitor's chosen alternative frontends.
 // absolute, if set, is prefixed to root-relative hrefs.
 func ReplaceURLs(body string, p *prefs.Prefs, absolute string) string {
 	result := body
 
-	if p.ReplaceYouTube != "" && strings.Contains(result, "youtu") {
+	if p.ReplaceYouTube != "" && strings.Contains(strings.ToLower(result), "youtu") {
 		host := strings.Trim(p.ReplaceYouTube, "/")
+		result = replaceYouTubeShort(result, host)
 		result = ytRegex.ReplaceAllLiteralString(result, host)
 	}
 
