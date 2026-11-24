@@ -460,3 +460,30 @@ func TestParseTweetSensitiveAndRetweetMediaFallback(t *testing.T) {
 		t.Fatalf("ParseGraphPhotoRailFromTweets = %+v", rail)
 	}
 }
+
+func TestParseBroadcastInfoPeriscopeFallback(t *testing.T) {
+	raw := `{
+		"data": {
+			"broadcast": {
+				"broadcast_id": "1abc",
+				"status": "Live stream",
+				"state": "running",
+				"media_key": "28_123",
+				"user_results": {"result": {"__typename": "UserUnavailable"}},
+				"periscope_user": {
+					"rest_id": "99",
+					"username": "peri_host",
+					"display_name": "Peri Host",
+					"profile_image_url": "https://pbs.twimg.com/profile_images/1/pic.jpg"
+				}
+			}
+		}
+	}`
+	bc := ParseBroadcastInfo(gjson.Parse(raw))
+	if bc.ID != "1abc" || bc.MediaKey != "28_123" {
+		t.Fatalf("unexpected broadcast: %+v", bc)
+	}
+	if bc.User.Username != "peri_host" || bc.User.Fullname != "Peri Host" || bc.User.ID != "99" {
+		t.Fatalf("expected periscope_user fallback, got %+v", bc.User)
+	}
+}

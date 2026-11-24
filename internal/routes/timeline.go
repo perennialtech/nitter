@@ -114,7 +114,7 @@ func searchTweets(ctx context.Context, q types.Query, after string) (types.Timel
 		return tl, nil
 	}
 
-	tl, err := api.GraphTweetSearch(ctx, q, after)
+	tl, err := cache.TweetSearch(ctx, q, after)
 	if err != nil && (errors.Is(err, types.ErrNoSessions) || errors.Is(err, types.ErrRateLimited)) && len(names) > 0 {
 		fb, ferr := cache.MultiUserTimeline(ctx, q, names, cache.TimelineKindFor(q), "")
 		if ferr == nil {

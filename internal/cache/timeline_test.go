@@ -4,6 +4,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -121,5 +122,92 @@ func TestUserMediaTimelineSensitiveFallback(t *testing.T) {
 	}
 	if len(profile.Tweets.Content) != 1 || profile.Tweets.Content[0][0].ID != 9 {
 		t.Fatalf("expected sensitive media fallback tweet 9, got %+v", profile.Tweets.Content)
+	}
+}
+
+func TestTweetSearchCachesNonEmptyPages(t *testing.T) {
+	useCache(t, 1<<20)
+	origSearch := lookupTweetSearch
+	t.Cleanup(func() { lookupTweetSearch = origSearch })
+
+	calls := 0
+	lookupTweetSearch = func(_ context.Context, q types.Query, _ string) (types.Timeline, error) {
+		calls++
+		if q.Text == "empty" {
+			return types.Timeline{Beginning: true, Query: q}, nil
+		}
+		return types.Timeline{
+			Beginning: true,
+			Query:     q,
+			Content:   []types.Tweets{{{ID: 42, Text: "cached tweet"}}},
+		}, nil
+	}
+
+	q := types.Query{Kind: types.QueryTweets, Text: "nitter"}
+	tl1, err := TweetSearch(context.Background(), q, "")
+	if err != nil || len(tl1.Content) != 1 {
+		t.Fatalf("first TweetSearch = %+v, %v", tl1, err)
+	}
+	tl2, err := TweetSearch(context.Background(), q, "")
+	if err != nil || len(tl2.Content) != 1 {
+		t.Fatalf("second TweetSearch = %+v, %v", tl2, err)
+	}
+	if calls != 1 {
+		t.Fatalf("lookupTweetSearch called %d times, want 1 (cached)", calls)
+	}
+
+	emptyQ := types.Query{Kind: types.QueryTweets, Text: "empty"}
+	_, _ = TweetSearch(context.Background(), emptyQ, "")
+	_, _ = TweetSearch(context.Background(), emptyQ, "")
+	if calls != 3 {
+		t.Fatalf("empty search should not be cached: calls = %d, want 3", calls)
+	}
+}
+
+func TestMultiUserTimelinePartialFailure(t *testing.T) {
+	useCache(t, 1<<20)
+	origUserID := lookupUserID
+	origUserTweets := lookupUserTweets
+	t.Cleanup(func() {
+		lookupUserID = origUserID
+		lookupUserTweets = origUserTweets
+	})
+
+	lookupUserID = func(_ context.Context, name string) (string, error) {
+		return "id-" + name, nil
+	}
+	calls := 0
+	lookupUserTweets = func(_ context.Context, id string, _ types.TimelineKind, _ string, _ bool) (types.Profile, error) {
+		calls++
+		if id == "id-broken" {
+			return types.Profile{}, errors.New("upstream failed")
+		}
+		return types.Profile{
+			Tweets: types.Timeline{
+				Content: []types.Tweets{{{ID: 100, Text: "ok tweet"}}},
+			},
+		}, nil
+	}
+
+	q := types.Query{Kind: types.QueryTweets, Text: "ok"}
+	tl, err := MultiUserTimeline(context.Background(), q, []string{"good", "broken"}, types.TimelineTweets, "")
+	if err != nil {
+		t.Fatalf("MultiUserTimeline returned error on partial failure: %v", err)
+	}
+	if !tl.Failed {
+		t.Fatalf("expected tl.Failed=true on partial failure")
+	}
+	if len(tl.Content) != 1 || tl.Content[0][0].ID != 100 {
+		t.Fatalf("expected partial results from healthy user, got %+v", tl.Content)
+	}
+
+	// Failed first page must not be cached.
+	before := calls
+	_, err = MultiUserTimeline(context.Background(), q, []string{"good", "broken"}, types.TimelineTweets, "")
+	if err != nil {
+		t.Fatalf("second MultiUserTimeline error: %v", err)
+	}
+	if calls == before {
+		t.Fatalf("failed first-page MultiUserTimeline should not have been cached")
 	}
 }

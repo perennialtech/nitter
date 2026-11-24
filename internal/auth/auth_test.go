@@ -615,3 +615,41 @@ func TestInitLoadsSessions(t *testing.T) {
 		t.Fatal(".json sessions files must be rejected")
 	}
 }
+
+func TestSessionSelectionPrefersActiveOrSuspended(t *testing.T) {
+	setup(t, 1, 2)
+	active := &Session{Kind: Cookie, ID: 1, AuthToken: "a1", Ct0: "c1"}
+	suspended := &Session{Kind: Cookie, ID: 2, AuthToken: "a2", Ct0: "c2", suspended: true}
+	mu.Lock()
+	sessionPool = []*Session{active, suspended}
+	mu.Unlock()
+
+	// Regular endpoints prefer suspended sessions to preserve active ones.
+	for range 10 {
+		s, err := GetSession(Req{Cookie: "profile", OAuth: "profile"})
+		if err != nil || s != suspended {
+			t.Fatalf("regular endpoint got %v, %v; want suspended", s, err)
+		}
+		Release(s)
+	}
+
+	// PreferActive endpoints pick active sessions first.
+	preferActive := Req{Cookie: "broadcast", OAuth: "broadcast", PreferActive: true}
+	for range 10 {
+		s, err := GetSession(preferActive)
+		if err != nil || s != active {
+			t.Fatalf("preferActive endpoint got %v, %v; want active", s, err)
+		}
+		Release(s)
+	}
+
+	// PreferActive still falls back to suspended if no active session is ready.
+	mu.Lock()
+	sessionPool = []*Session{suspended}
+	mu.Unlock()
+	s, err := GetSession(preferActive)
+	if err != nil || s != suspended {
+		t.Fatalf("preferActive fallback got %v, %v; want suspended", s, err)
+	}
+	Release(s)
+}

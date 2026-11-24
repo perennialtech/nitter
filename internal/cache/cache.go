@@ -225,8 +225,12 @@ func Broadcast(ctx context.Context, id string) (types.Broadcast, error) {
 	if err != nil {
 		return b, err
 	}
-	b.M3u8URL, err = api.BroadcastStream(ctx, b.MediaKey)
-	return b, err
+	if b.MediaKey != "" {
+		if stream, err := api.BroadcastStream(ctx, b.MediaKey); err == nil {
+			b.M3u8URL = stream
+		}
+	}
+	return b, nil
 }
 
 func AudioSpace(ctx context.Context, id string) (types.AudioSpace, error) {
@@ -246,8 +250,12 @@ func AudioSpace(ctx context.Context, id string) (types.AudioSpace, error) {
 	if err != nil {
 		return s, err
 	}
-	s.M3u8URL, err = api.BroadcastStream(ctx, s.MediaKey)
-	return s, err
+	if s.MediaKey != "" {
+		if stream, err := api.BroadcastStream(ctx, s.MediaKey); err == nil {
+			s.M3u8URL = stream
+		}
+	}
+	return s, nil
 }
 
 func AccountInfo(ctx context.Context, username string, fetch bool) (types.AccountInfo, error) {

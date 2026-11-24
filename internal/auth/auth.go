@@ -343,11 +343,23 @@ func GetReadyGuestSession(ctx context.Context, req Req, activate GuestActivator)
 func GetSession(req Req) (*Session, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	var ready []*Session
+	var nonSuspended, suspended []*Session
 	for _, s := range sessionPool {
 		if isReady(s, req) {
-			ready = append(ready, s)
+			if s.suspended {
+				suspended = append(suspended, s)
+			} else {
+				nonSuspended = append(nonSuspended, s)
+			}
 		}
+	}
+	primary, secondary := suspended, nonSuspended
+	if req.Search || req.PreferActive {
+		primary, secondary = nonSuspended, suspended
+	}
+	ready := primary
+	if len(ready) == 0 {
+		ready = secondary
 	}
 	if len(ready) == 0 {
 		logf("no sessions available for API: %s", req.Cookie)

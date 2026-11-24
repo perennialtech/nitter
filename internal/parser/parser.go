@@ -207,12 +207,33 @@ func ParseAboutAccount(js gjson.Result) types.AccountInfo {
 	return result
 }
 
+func parseBroadcastUser(bc gjson.Result) types.User {
+	user := get(bc, "user_results.result")
+	if !user.IsObject() || str(get(user, "__typename")) == "UserUnavailable" {
+		return emptyUser()
+	}
+	return parseGraphUserNode(bc)
+}
+
+func parsePeriscopeUser(bc gjson.Result) types.User {
+	pu := get(bc, "periscope_user")
+	if !pu.IsObject() {
+		return emptyUser()
+	}
+	return types.User{
+		ID:       str(get(pu, "rest_id")),
+		Username: str(get(pu, "username")),
+		Fullname: str(get(pu, "display_name")),
+		UserPic:  str(get(pu, "profile_image_url")),
+	}
+}
+
 func ParseBroadcastInfo(js gjson.Result) types.Broadcast {
 	bc := get(js, "data.broadcast")
 	if isNull(bc) {
 		return types.Broadcast{User: emptyUser()}
 	}
-	return types.Broadcast{
+	result := types.Broadcast{
 		Size:               types.MediaSize{Width: getInt(get(bc, "width")), Height: getInt(get(bc, "height"))},
 		ID:                 str(get(bc, "broadcast_id")),
 		Title:              str(get(bc, "status")),
@@ -224,8 +245,12 @@ func ParseBroadcastInfo(js gjson.Result) types.Broadcast {
 		EndTime:            getTimeFromMs(get(bc, "end_time")),
 		ReplayStart:        getInt(get(bc, "edited_replay.start_time")),
 		AvailableForReplay: getBool(get(bc, "available_for_replay")),
-		User:               parseGraphUserNode(bc),
 	}
+	result.User = parseBroadcastUser(bc)
+	if result.User.Username == "" {
+		result.User = parsePeriscopeUser(bc)
+	}
+	return result
 }
 
 func parseSpaceParticipant(js gjson.Result) types.SpaceParticipant {

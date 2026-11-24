@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/perennialtech/nitter/internal/api"
 	"github.com/perennialtech/nitter/internal/query"
 	"github.com/perennialtech/nitter/internal/types"
 )
@@ -24,14 +25,16 @@ const (
 	maxFetchRounds          = 10
 	maxFilteredFetchRounds  = 6
 	filteredSearchCacheTime = 2 * time.Minute
+	searchPageCacheTime     = 45 * time.Second
 
 	MediaFallbackPrefix   = "mf:"
 	MultiUserCursorPrefix = "mu:"
 )
 
 var (
-	lookupUserID     = UserID
-	lookupUserTweets = UserTweets
+	lookupUserID      = UserID
+	lookupUserTweets  = UserTweets
+	lookupTweetSearch = api.GraphTweetSearch
 )
 
 type multiUserState struct {
@@ -180,11 +183,14 @@ func fetchMultiUserTimeline(ctx context.Context, q types.Query, names []string,
 
 	var displayed []types.Tweets
 	truncated := false
+	failed := false
 
 	for range maxRounds {
 		var candidates []indexedThread
 		pages := make([]string, len(states))
 		counts := make([]int, len(states))
+		failedBefore := failed
+		failed = false
 
 		for i, state := range states {
 			if state.Exhausted {
@@ -192,7 +198,11 @@ func fetchMultiUserTimeline(ctx context.Context, q types.Query, names []string,
 			}
 			profile, err := lookupUserTweets(ctx, state.UserID, fetchKind, state.Cursor, false)
 			if err != nil {
-				return types.Timeline{}, err
+				if ctx.Err() != nil {
+					return types.Timeline{}, ctx.Err()
+				}
+				failed = true
+				continue
 			}
 			for _, thread := range profile.Tweets.Content {
 				id := itemID(thread)
@@ -255,12 +265,17 @@ func fetchMultiUserTimeline(ctx context.Context, q types.Query, names []string,
 			}
 		}
 
-		if len(displayed) >= multiUserPageSize || !progressed {
+		if len(displayed) >= multiUserPageSize {
+			break
+		}
+		failed = failed || failedBefore
+		if failed || !progressed {
 			break
 		}
 	}
 
 	result.Content = displayed
+	result.Failed = failed
 
 	hasMore := truncated
 	for _, state := range states {
@@ -292,7 +307,8 @@ func MultiUserTimeline(ctx context.Context, q types.Query, names []string,
 		if err != nil {
 			return tl, 0, err
 		}
-		if len(tl.Content) > 0 || (after != "" && tl.Bottom != "") {
+		cacheable := !tl.Failed || after != ""
+		if cacheable && (len(tl.Content) > 0 || (after != "" && tl.Bottom != "")) {
 			return tl, filteredSearchCacheTime, nil
 		}
 		return tl, 0, nil
@@ -334,4 +350,34 @@ func UserMediaTimeline(ctx context.Context, userID, name string, q types.Query, 
 		tl.Bottom = MediaFallbackPrefix + tl.Bottom
 	}
 	return types.Profile{Tweets: tl}, nil
+}
+
+func searchPageKey(q types.Query, after string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s",
+		query.Param(q, ""), q.Kind, after)))
+	return "ts:" + hex.EncodeToString(sum[:16])
+}
+
+// TweetSearch fetches a page of tweet search results with singleflight
+// deduplication and short-TTL caching of non-empty pages.
+func TweetSearch(ctx context.Context, q types.Query, after string) (types.Timeline, error) {
+	if entries == nil {
+		return lookupTweetSearch(ctx, q, after)
+	}
+	key := searchPageKey(q, after)
+	tl, err := cached(ctx, key, func() (types.Timeline, time.Duration, error) {
+		tl, err := lookupTweetSearch(ctx, q, after)
+		if err != nil {
+			return tl, 0, err
+		}
+		if len(tl.Content) > 0 {
+			return tl, searchPageCacheTime, nil
+		}
+		return tl, 0, nil
+	})
+	if err != nil {
+		return types.Timeline{}, err
+	}
+	tl.Query = q
+	return tl, nil
 }
